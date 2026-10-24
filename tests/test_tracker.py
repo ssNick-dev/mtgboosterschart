@@ -16,7 +16,7 @@ from tracker import (
     confidence_score,
     risk_label,
     movement_arrow,
-    price_anomaly,
+    price_anomaly,\n    audit_booster_config,
 )
 
 
@@ -100,6 +100,26 @@ class SourceTests(unittest.TestCase):
                   "sheets": {"common": {"cards": {"a": 1, "b": 1, "c": 1, "d": 1}}}}
         prices = {uid: paper(normal=2) for uid in "abcd"}
         self.assertAlmostEqual(model_net_ev(config, prices), 6.96)
+
+
+    def test_weighted_without_replacement_ev_is_not_naive(self):
+        config = {"boosters": [{"weight": 1, "contents": {"cards": 4}}],
+                  "sheets": {"cards": {"cards": {"a": 100, "b": 1, "c": 1, "d": 1}}}}
+        prices = {"a": paper(normal=1), "b": paper(normal=100),
+                  "c": paper(normal=100), "d": paper(normal=100)}
+        ev, median, coverage, _ = evaluate_booster(config, prices, samples=200, seed=7)
+        self.assertAlmostEqual(ev, 301)
+        self.assertAlmostEqual(median, 301)
+        self.assertEqual(coverage, 1)
+        self.assertTrue(any("Monte Carlo" in x for x in audit_booster_config(config)))
+
+    def test_audit_flags_color_balance_and_fixed_sheet(self):
+        config = {"boosters": [{"weight": 1, "contents": {"fixed": 1}}],
+                  "sheets": {"fixed": {"fixed": True, "balanceColors": True,
+                                       "cards": {"a": 1}}}}
+        findings = audit_booster_config(config)
+        self.assertTrue(any("fixed-card" in x for x in findings))
+        self.assertTrue(any("color-balanced" in x for x in findings))
 
     def test_date_parse(self):
         self.assertEqual(parse_date_from_text("2026-10-24T03:20:00Z"), date(2026, 10, 24))
