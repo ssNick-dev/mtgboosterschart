@@ -342,22 +342,29 @@ def evaluate_booster(config: dict, prices: dict, samples: int = 6000, seed: int 
                 if duplicates:
                     chosen = bisect.bisect_left(cumulative, rng.random() * total)
                 else:
-                    # Reweight the remaining eligible cards on every draw.
-                    # Rejection sampling has a high failure probability when
-                    # one card dominates the sheet's weights.
-                    remaining = [(i, w) for i, w in enumerate(_weights)
-                                 if names[i] not in used]
-                    available_total = sum(w for _, w in remaining)
-                    if available_total <= 0:
-                        raise SourceError("No eligible cards left in sheet")
-                    roll = rng.random() * available_total
-                    running = 0.0
-                    chosen = remaining[-1][0]
-                    for index, weight in remaining:
-                        running += weight
-                        if roll < running:
-                            chosen = index
+                    # Try the published weighted distribution first; rejection
+                    # of previously chosen cards is exact conditioning.
+                    chosen = bisect.bisect_left(cumulative, rng.random() * total)
+                    for _retry in range(24):
+                        if names[chosen] not in used:
                             break
+                        chosen = bisect.bisect_left(cumulative, rng.random() * total)
+                    if names[chosen] in used:
+                        # Exact fallback for highly skewed sheets: bounded retries
+                        # prevent failures and keep ordinary sheets efficient.
+                        remaining = [(i, w) for i, w in enumerate(_weights)
+                                     if names[i] not in used]
+                        available_total = sum(w for _, w in remaining)
+                        if available_total <= 0:
+                            raise SourceError("No eligible cards left in sheet")
+                        roll = rng.random() * available_total
+                        running = 0.0
+                        chosen = remaining[-1][0]
+                        for index, weight in remaining:
+                            running += weight
+                            if roll < running:
+                                chosen = index
+                                break
                     used.add(names[chosen])
                 pack_val += vals[chosen]
         simulated.append(pack_val)
