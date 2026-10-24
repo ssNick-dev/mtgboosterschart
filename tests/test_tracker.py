@@ -74,19 +74,17 @@ class SourceTests(unittest.TestCase):
         with self.assertRaises(SourceError):
             evaluate_booster(config, prices, samples=10)
 
-    def test_discord_embed_metrics(self):
+    def test_discord_text_metrics(self):
         results = [Result("Test Set " + str(i), str(i), "play", 4 + i, 3 + i,
                           2 + i, 80, 1, "2026-10-24", i, "All 5 | Dragons, Artifacts",
                           net_ev=2.5, confidence=97, risk="Medium") for i in range(8)]
-        payload = format_discord("play", results, date(2026, 10, 24), date(2026, 10, 24), 8)
-        self.assertLessEqual(len(payload["content"]), 2000)
-        embed = payload["embeds"][0]
-        self.assertEqual(len(embed["fields"]), 8)
-        field = embed["fields"][0]
-        self.assertIn("**Pack** $4.00", field["value"])
-        self.assertIn("**Net EV** $2.50", field["value"])
-        self.assertIn("**Colors & cards:** All 5 — Dragons, Artifacts", field["value"])
-
+        message = format_discord("play", results, date(2026, 10, 24), date(2026, 10, 24), 8)
+        self.assertIsInstance(message, str)
+        self.assertLessEqual(len(message), 2000)
+        self.assertIn("Pack $4.00", message)
+        self.assertIn("Net $2.50", message)
+        self.assertIn("All 5 — Dragons, Artifacts", message)
+        self.assertEqual(message.count("**0"), 8)
 
     def test_new_metrics(self):
         self.assertEqual(net_price(0.50), 0.0)
@@ -132,21 +130,22 @@ class SourceTests(unittest.TestCase):
 
 
 
-    def test_full_color_profiles_not_truncated(self):
+    def test_whole_word_profiles_fit_all_fifteen(self):
         profile = "All 5 (U-lean) + colorless | Detectives, Rogues, Enchantments (partial)"
         results = [Result(f"Long Name Set {i}", str(i), "collector", 5, 8, 2,
                           160 - i, 1, "2026-10-24", i, profile,
                           net_ev=3.0, confidence=92, risk="High", movement="▲2")
                    for i in range(15)]
-        payload = format_discord("collector", results,
+        message = format_discord("collector", results,
                                  date(2026, 10, 24), date(2026, 10, 24), 15)
-        fields = payload["embeds"][0]["fields"]
-        self.assertEqual(len(fields), 15)
-        self.assertTrue(all(profile.replace(" | ", " — ") in item["value"] for item in fields))
-        self.assertTrue(all("▲2" in item["name"] for item in fields))
-        self.assertTrue(all("Det…" not in item["value"] for item in fields))
+        self.assertLessEqual(len(message), 2000)
+        self.assertEqual(message.count("▲2"), 15)
+        self.assertEqual(message.count("**"), 30 + 2)
+        self.assertNotIn("Det…", message)
+        self.assertNotIn("Rog…", message)
+        self.assertIn("Detectives", message)
 
-    def test_existing_posts_are_edited_with_embed_payload(self):
+    def test_existing_posts_recover_plain_text_and_clear_embeds(self):
         import json
         from pathlib import Path
         from tempfile import TemporaryDirectory
@@ -155,33 +154,28 @@ class SourceTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             state_path = Path(directory) / "ids.json"
             state_path.write_text(json.dumps({"play": "11", "collector": "12", "status": "13"}))
-            payload = {"content": "**Example**", "embeds": [{"description": "Full profile"}]}
             with patch("tracker.requests.Session") as session:
                 response = Mock(status_code=200)
                 session.return_value.request.return_value = response
-                publish_discord({"play": payload, "collector": payload, "status": "Latest status"},
+                publish_discord({"play": "Play full rankings",
+                                 "collector": "Collector full rankings", "status": "Latest status"},
                                 "https://discord.com/api/webhooks/123/testtoken", state_path)
                 calls = session.return_value.request.call_args_list
             self.assertEqual(len(calls), 3)
             self.assertTrue(all(call.args[0] == "PATCH" for call in calls))
-            self.assertEqual(calls[0].kwargs["json"]["embeds"][0]["description"], "Full profile")
-            self.assertEqual(calls[2].kwargs["json"]["embeds"], [])
-
+            self.assertEqual(calls[0].kwargs["json"]["content"], "Play full rankings")
+            self.assertEqual(calls[1].kwargs["json"]["content"], "Collector full rankings")
+            self.assertTrue(all(call.kwargs["json"]["embeds"] == [] for call in calls))
 
     def test_profiles_and_top15(self):
         from tracker import booster_card_profile
         values = [Result(f"Set {i}", str(i), "play", 5, 5, 3, 100 - i, 1,
                          "2026-10-24", i, "WUBRG | Dragons, Artifacts") for i in range(19)]
         message = format_discord("play", values, date(2026, 10, 24), date(2026, 10, 24), 15)
-        self.assertIn("TOP 15", message["content"])
-        fields = message["embeds"][0]["fields"]
-        self.assertEqual(len(fields), 15)
-        self.assertEqual(sum("WUBRG — Dragons, Artifacts" in x["value"] for x in fields), 15)
-        self.assertTrue(all(len(x["name"]) <= 256 and len(x["value"]) <= 1024 for x in fields))
-        total_length = len(message["embeds"][0]["description"]) + sum(
-            len(x["name"]) + len(x["value"]) for x in fields)
-        self.assertLessEqual(total_length, 6000)
-
+        self.assertIn("TOP 15", message)
+        self.assertLessEqual(len(message), 2000)
+        self.assertEqual(message.count("WUBRG — Dragons, Artifacts"), 15)
+        self.assertIn("**15. Set 14**", message)
         records = [{"uuid": str(i), "name": f"Card {i}", "colors": [["W"], ["U"], ["B"], ["R"], ["G"]][i % 5],
                     "types": ["Creature"], "subtypes": ["Dragon"]} for i in range(15)]
         config = {"boosters": [{"weight": 1, "contents": {"creatures": 2}}],
