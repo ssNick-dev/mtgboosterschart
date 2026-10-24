@@ -16,7 +16,8 @@ from tracker import (
     confidence_score,
     risk_label,
     movement_arrow,
-    price_anomaly,\n    audit_booster_config,
+    price_anomaly,
+    audit_booster_config,
 )
 
 
