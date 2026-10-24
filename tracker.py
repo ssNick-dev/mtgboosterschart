@@ -526,7 +526,7 @@ def publish_discord(messages: dict[str, str], webhook: str, state_path: Path) ->
             return response
         raise SourceError("Discord webhook rate-limited repeatedly")
 
-    for kind in ("play", "collector", "status"):
+    for kind in ("status", "play", "collector"):
         content = messages[kind]
         # Use visible text, and clear any previously hidden embeds.
         payload = {"content": content, "embeds": [],
