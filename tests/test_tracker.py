@@ -71,9 +71,9 @@ class SourceTests(unittest.TestCase):
         results = [Result("Test Set " + str(i), str(i), "play", 4 + i, 3 + i, 2 + i, 80, 1, "2026-10-24", i)
                    for i in range(8)]
         text = format_discord("play", results, date(2026, 10, 24), date(2026, 10, 24), 8)
-        self.assertEqual(text.count("```text"), 2)
+        self.assertEqual(text.count("```text"), 0)
         self.assertLessEqual(len(text), 2000)
-        self.assertEqual(len([x for x in text.splitlines() if x.strip().startswith("80%")]), 0)
+        self.assertIn("Pack $4.00 | EV $3.00 | Median $2.00 | ROI 80%", text)
 
     def test_date_parse(self):
         self.assertEqual(parse_date_from_text("2026-10-24T03:20:00Z"), date(2026, 10, 24))
@@ -86,7 +86,7 @@ class SourceTests(unittest.TestCase):
                          "2026-10-24", i, "WUBRG | Dragons, Artifacts") for i in range(19)]
         message = format_discord("play", values, date(2026, 10, 24), date(2026, 10, 24), 15)
         self.assertIn("TOP 15", message)
-        self.assertEqual(message.count("WUBRG | Dragons"), 15)
+        self.assertEqual(message.count("WUBRG — Dragons"), 15)
         self.assertNotIn("Before fees", message)
         self.assertNotIn("Sources:", message)
         self.assertLessEqual(len(message), 2000)
