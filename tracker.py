@@ -614,7 +614,11 @@ def run(args) -> None:
     partial_count = sum("(partial)" in r.profile or "profile limited" in r.profile or
                         "profile unavailable" in r.profile for r in results)
     checked_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    messages["status"] = f"**Last price refresh:** <t:{int(datetime.now(timezone.utc).timestamp())}:F>"
+    messages["status"] = (
+        "**MTG BOOSTER TRACKER**\n"
+        f"**Market prices updated:** Cards {card_date.isoformat()} | Packs {tcg_date.isoformat()} (source snapshot dates)\n"
+        f"**Bot last ran:** <t:{int(datetime.now(timezone.utc).timestamp())}:F>"
+    )
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
     for kind, content in messages.items():
