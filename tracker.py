@@ -661,7 +661,12 @@ def format_discord(kind: str, results: list[Result], tcg_date: date,
                 detail = f"${result.price:.2f} | EV ${result.ev:.2f} | ROI {result.roi:.0f}%"
                 row = f"{title_line}\n{detail}\n{profile}"
             lines.append(row)
-        footer = "\n\nEV = modeled average | Net = estimated resale | C = confidence"
+        if style == 4:
+            footer = "\n\nEV = modeled average | ROI = EV / pack price"
+        else:
+            footer = "\n\nEV = modeled average | Net = estimated resale"
+            if style in (1, 2):
+                footer += " | C = confidence"
         return header + "\n\n".join(lines) + footer
 
     # Prioritize complete descriptions; remove less important labels first.
