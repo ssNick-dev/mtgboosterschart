@@ -360,72 +360,112 @@ def fresh_or_fail(source: str, source_day: date | None, today: date, max_age: in
 
 
 def short_name(name: str, max_width: int = 22) -> str:
-    replacements = {"Murders at Karlov Manor": "Karlov Manor", "Outlaws of Thunder Junction": "Thunder Junction",
-                    "Magic: The Gathering—FINAL FANTASY": "Final Fantasy", "Magic: The Gathering - FINAL FANTASY": "Final Fantasy",
-                    "Teenage Mutant Ninja Turtles": "TMNT", "Magic: The Gathering | Avatar: The Last Airbender": "Avatar"}
-    result = replacements.get(name, name)
+    """Use recognizable titles instead of clipping important words."""
+    aliases = {
+        "murders at karlov manor": "Karlov Manor",
+        "outlaws of thunder junction": "Thunder Junction",
+        "avatar: the last airbender": "Avatar",
+        "magic: the gathering | avatar: the last airbender": "Avatar",
+        "marvel's spider-man": "Spider-Man",
+        "secrets of strixhaven": "Strixhaven",
+        "duskmourn: house of horror": "Duskmourn",
+        "magic: the gathering—final fantasy": "Final Fantasy",
+        "magic: the gathering - final fantasy": "Final Fantasy",
+        "teenage mutant ninja turtles": "TMNT",
+    }
+    result = aliases.get(name.casefold(), name)
+    result = re.sub(r"^Magic: The Gathering\s*(?:\||—|-)\s*", "", result, flags=re.I)
     if len(result) <= max_width:
         return result
-    return result[: max_width - 1] + "…"
-
+    # For other long titles, prefer a whole-word abbreviation to an ellipsis.
+    words = result.split()
+    while len(" ".join(words)) > max_width and len(words) > 1:
+        words.pop()
+    candidate = " ".join(words)
+    return candidate if len(candidate) <= max_width else result[:max_width]
 
 def booster_card_profile(config: dict, set_data: dict) -> str:
-    """Summarize the actual card UUIDs on the booster sheets, not assumed themes."""
-    cards = {c["uuid"]: c for c in set_data.get("cards", []) if c.get("uuid")}
-    possible = set()
-    for sheet_name, sheet in (config.get("sheets") or {}).items():
-        if not TOKEN_SLOT.search(sheet_name):
-            possible.update((sheet.get("cards") or {}).keys())
-    if not possible or len(possible & cards.keys()) / len(possible) < 0.70:
-        return "Card profile unavailable"
-    named = {}
-    for uuid in possible:
-        card = cards.get(uuid)
-        if card and card.get("name"):
-            named.setdefault(card["name"], card)
-    colors = set()
-    colorless_nonlands = 0
-    eligible_nonlands = 0
-    tribes = Counter()
-    noncreature_types = Counter()
-    for card in named.values():
-        types = set(card.get("types") or [])
-        if "Land" in types or "Token" in types:
-            continue
-        eligible_nonlands += 1
-        printed_colors = set(card.get("colors") or []) & set("WUBRG")
-        colors.update(printed_colors)
-        if not printed_colors:
-            colorless_nonlands += 1
-        if "Creature" in types:
-            tribes.update(set(card.get("subtypes") or []))
-        for kind in ("Artifact", "Enchantment", "Planeswalker", "Battle", "Instant", "Sorcery"):
-            if kind in types:
-                noncreature_types[kind] += 1
-    if eligible_nonlands < 10 or not colors:
-        return "Card profile unavailable"
-    color_label = "".join(c for c in "WUBRG" if c in colors)
-    if colorless_nonlands / eligible_nonlands >= 0.07:
-        color_label += "+C"
-    distinct_tribes = [(t, n) for t, n in tribes.most_common() if t != "Human" and n >= 3]
-    if len(distinct_tribes) < 2 and tribes.get("Human", 0) >= 3:
-        distinct_tribes.append(("Human", tribes["Human"]))
-    focus = [x for x, _ in distinct_tribes[:2]]
-    if not focus:
-        focus = ["Creatures"] if any("Creature" in (c.get("types") or []) for c in named.values()) else []
-    highlights = [(kind, n) for kind, n in noncreature_types.most_common()
-                  if kind in ("Artifact", "Enchantment", "Planeswalker", "Battle")
-                  and n / eligible_nonlands >= 0.09]
-    plural = {"Artifact": "Artifacts", "Enchantment": "Enchantments",
-              "Planeswalker": "Planeswalkers", "Battle": "Battles",
-              "Instant": "Instants", "Sorcery": "Sorceries"}
-    if highlights:
-        focus.append(plural[highlights[0][0]])
-    elif len(focus) < 2 and noncreature_types:
-        focus.append(plural[noncreature_types.most_common(1)[0][0]])
-    description = ", ".join(focus) or "Mixed card types"
-    return f"{color_label} | {description}"[:48]
+    """Approximate booster-pool colors/types using published slot probabilities.
 
+    Set files omit some Collector bonus printings. Weight known card metadata
+    by expected slot appearances; explicitly mark partial coverage.
+    """
+    cards = {c["uuid"]: c for c in set_data.get("cards", []) if c.get("uuid")}
+    variants = config.get("boosters") or []
+    sheets = config.get("sheets") or {}
+    weights = [positive(v.get("weight")) or 0 for v in variants]
+    weight_total = sum(weights)
+    if not cards or not weight_total:
+        return "Mixed printings (profile unavailable)"
+    total_slots = 0.0
+    known_slots = 0.0
+    nonlands = 0.0
+    colorless = 0.0
+    colors = Counter()
+    tribes = Counter()
+    kinds = Counter()
+    for variant, vw in zip(variants, weights):
+        if not vw:
+            continue
+        prob = vw / weight_total
+        for sheet_name, count in (variant.get("contents") or {}).items():
+            if TOKEN_SLOT.search(sheet_name):
+                continue
+            sheet = sheets.get(sheet_name) or {}
+            sheet_cards = sheet.get("cards") or {}
+            entries = [(uid, positive(w) or 0.0) for uid, w in sheet_cards.items()]
+            denom = sum(w for _, w in entries)
+            if not denom:
+                continue
+            quantity = prob * float(count)
+            total_slots += quantity
+            for uid, w in entries:
+                card = cards.get(uid)
+                if not card or not w:
+                    continue
+                draw = quantity * w / denom
+                known_slots += draw
+                c_types = set(card.get("types") or [])
+                if "Land" in c_types or "Token" in c_types:
+                    continue
+                nonlands += draw
+                card_colors = set(card.get("colors") or []) & set("WUBRG")
+                if not card_colors:
+                    colorless += draw
+                for color in card_colors:
+                    colors[color] += draw
+                if "Creature" in c_types:
+                    for tribe in set(card.get("subtypes") or []):
+                        tribes[tribe] += draw
+                for kind in ("Artifact", "Enchantment", "Planeswalker", "Battle"):
+                    if kind in c_types:
+                        kinds[kind] += draw
+    coverage = known_slots / total_slots if total_slots else 0.0
+    if coverage < .50 or nonlands < 1 or not colors:
+        return "Mixed/bonus printings (profile limited)"
+    present = [c for c in "WUBRG" if colors[c] > 0]
+    label = "All 5" if len(present) == 5 else "/".join(present)
+    colored_total = sum(colors.values())
+    most_common_color, highest = colors.most_common(1)[0]
+    if len(present) >= 3 and highest / colored_total >= 0.33:
+        label += f" ({most_common_color}-lean)"
+    if colorless / nonlands >= .09:
+        label += " + colorless"
+    # Count expected pulls rather than unique printings. Avoid overlabeling
+    # tiny bonus-card sheets as the set's primary creature themes.
+    ranked_tribes = [(t, w) for t, w in tribes.most_common()
+                     if t != "Human" and w / nonlands >= .035]
+    focus = [t for t, _ in ranked_tribes[:2]]
+    if not focus and tribes.get("Human", 0) / nonlands >= .035:
+        focus = ["Human"]
+    extras = [(k, w) for k, w in kinds.most_common() if w / nonlands >= .09]
+    if extras and len(focus) < 3:
+        focus.append({"Artifact": "Artifacts", "Enchantment": "Enchantments",
+                      "Planeswalker": "Planeswalkers", "Battle": "Battles"}[extras[0][0]])
+    if not focus:
+        focus = ["Mixed spells/creatures"]
+    suffix = " (partial)" if coverage < .90 else ""
+    return f"{label} | {', '.join(focus)}{suffix}"[:48]
 
 def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: date, top_n: int) -> str:
     """Compact, normal Discord message text: visible even when embeds are hidden."""
@@ -450,7 +490,7 @@ def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: 
         f"**MTG {title} BOOSTERS - TOP {len(selected)} VALUE**\n"
         f"Cards: {card_date.isoformat()} | Packs: {tcg_date.isoformat()} | USD\n"
         + "```text\n" + columns + "\n" + "-" * len(columns) + "\n" + "\n".join(rows) + "\n```\n"
-        + "**COLORS & CARD TYPES** (same rank numbers)\n"
+        + "**COLORS & CARD TYPES** (same rank numbers; partial if missing bonus cards)\n"
         + "```text\n" + "\n".join(profiles) + "\n```\n"
         + "EV = average | TYP = median | ROI = EV / pack\n"
         + "Colors: W/U/B/R/G = five MTG colors; C = colorless"
