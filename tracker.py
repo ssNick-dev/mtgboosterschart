@@ -273,7 +273,7 @@ def evaluate_booster(config: dict, prices: dict, samples: int = 6000, seed: int 
     sheets = config.get("sheets") or {}
     if not variants or not sheets:
         raise SourceError("Missing booster model")
-    # Color-balanced sheets are modeled by their published marginal card weights;
+    if samples < 100:\n        raise SourceError("At least 100 simulated boosters required")\n    # Color-balanced sheets are modeled by their published marginal card weights;
     # the within-pack color correlations are NOT replicated. This makes the
     # median an approximation (disclosed in the Discord footer).
     prepared = {}
@@ -283,7 +283,7 @@ def evaluate_booster(config: dict, prices: dict, samples: int = 6000, seed: int 
     ev_total = 0.0
     covered_slots = 0.0
     card_slots = 0.0
-    source_dates = []
+    source_dates = []\n    has_weighted_without_replacement = False
     for variant in variants:
         variant_weight = positive(variant.get("weight"))
         if variant_weight is None:
@@ -303,6 +303,10 @@ def evaluate_booster(config: dict, prices: dict, samples: int = 6000, seed: int 
                 raise SourceError("Invalid pack slot count")
             if int(count) > len(weights) and not sheets[sheet_name].get("allowDuplicates", False):
                 raise SourceError("Too many without-replacement card draws")
+            if count > 1 and not sheets[sheet_name].get("allowDuplicates", False) and len(set(weights)) > 1:
+                # Marginal weighted EV is biased when successive cards are
+                # sampled without replacement; estimate EV from simulated packs.
+                has_weighted_without_replacement = True
             ev_total += probability * count * sum(v * w for v, w in zip(vals, weights)) / total
             if not TOKEN_SLOT.search(sheet_name):
                 card_slots += probability * count
@@ -343,7 +347,7 @@ def evaluate_booster(config: dict, prices: dict, samples: int = 6000, seed: int 
                     used.add(names[chosen])
                 pack_val += vals[chosen]
         simulated.append(pack_val)
-    return ev_total, statistics.median(simulated), coverage, max(source_dates) if source_dates else "unknown"
+    if has_weighted_without_replacement:\n        ev_total = statistics.mean(simulated)\n    return ev_total, statistics.median(simulated), coverage, max(source_dates) if source_dates else "unknown"
 
 
 
