@@ -616,7 +616,7 @@ def run(args) -> None:
     checked_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     messages["status"] = (
         "**MTG BOOSTER TRACKER**\n"
-        f"**Market prices updated:** Cards {card_date.isoformat()} | Packs {tcg_date.isoformat()} (source snapshot dates)\n"
+        f"**Market prices updated:** {card_date.isoformat()} | Packs {tcg_date.isoformat()} (source snapshot dates)\n"
         f"**Bot last ran:** <t:{int(datetime.now(timezone.utc).timestamp())}:F>"
     )
     output = Path(args.output)
