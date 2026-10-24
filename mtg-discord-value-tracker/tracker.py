@@ -1,0 +1,528 @@
+#!/usr/bin/env python3
+"""MTG booster value tracker. No fabricated market prices or stale-data publishing."""
+from __future__ import annotations
+
+import argparse
+import bisect
+import gzip
+import json
+import logging
+import math
+import os
+import random
+import re
+import statistics
+import time
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+
+import requests
+
+LOG = logging.getLogger("mtg-tracker")
+MTGJSON = "https://mtgjson.com/api/v5"
+TCGCSV = "https://tcgcsv.com/tcgplayer/1"
+STATE_FILE = Path("state/message_ids.json")
+USER_AGENT = "MTGBoosterValueDiscordTracker/1.0 (personal GitHub Actions project)"
+MIN_COVERAGE = 0.97  # Expected number of priced card slots; tokens/ad cards excluded
+HEADERS = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+# Sealed-product names that CANNOT be priced as an individual, unsleeved booster.
+NOT_SINGLE = re.compile(r"\b(box|display|case|bundle|sleeved|blister|omega|multi.?pack|draft night|gift|3.?pack|six.?pack|sample|jumpstart)\b", re.I)
+TOKEN_SLOT = re.compile(r"token|advertisement|marketing|art card|helper card", re.I)
+
+
+@dataclass
+class Candidate:
+    code: str
+    name: str
+    kind: str
+    group_id: int | None
+    product_id: int
+    product_name: str
+    booster_set: str
+    booster_code: str
+    release_date: str
+
+
+@dataclass
+class Result:
+    name: str
+    code: str
+    kind: str
+    price: float
+    ev: float
+    median: float
+    roi: float
+    coverage: float
+    card_price_day: str
+    source_product_id: int
+
+
+class SourceError(RuntimeError):
+    pass
+
+
+class HTTP:
+    def __init__(self):
+        self.session = requests.Session()
+        self.session.headers.update(HEADERS)
+        self.last_tcg_call = 0.0
+
+    def get(self, url: str, *, as_bytes: bool = False) -> Any:
+        if not url.startswith((MTGJSON + "/", TCGCSV + "/", "https://tcgcsv.com/")):
+            raise SourceError("Unexpected data URL")
+        if urlparse(url).hostname == "tcgcsv.com":
+            delay = .22 - (time.monotonic() - self.last_tcg_call)
+            if delay > 0:
+                time.sleep(delay)
+            self.last_tcg_call = time.monotonic()
+        for attempt in range(4):
+            try:
+                resp = self.session.get(url, timeout=(15, 90))
+                if resp.status_code in (429, 500, 502, 503, 504):
+                    time.sleep(min(2 ** attempt * 2, 16))
+                    continue
+                resp.raise_for_status()
+                if as_bytes:
+                    return resp.content
+                if url.endswith(".txt"):
+                    return resp.text.strip()
+                body = resp.json()
+                if body.get("success") is False:
+                    raise SourceError(f"Source returned unsuccessful response: {url}")
+                return body
+            except (requests.RequestException, ValueError) as exc:
+                if attempt == 3:
+                    raise SourceError(f"Cannot fetch {url}: {exc}") from exc
+                time.sleep(2 ** attempt)
+        raise SourceError(f"Too many retries: {url}")
+
+    def mtgjson(self, file: str) -> dict:
+        return self.get(f"{MTGJSON}/{file}")
+
+    def tcg(self, group: int, endpoint: str) -> list:
+        result = self.get(f"{TCGCSV}/{group}/{endpoint}")
+        return result.get("results", [])
+
+
+def positive(value: Any) -> float | None:
+    try:
+        n = float(value)
+        return n if math.isfinite(n) and n > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def price_for_uuid(prices: dict, uuid: str, foil: bool) -> tuple[float | None, str | None]:
+    try:
+        block = prices[uuid]["paper"]["tcgplayer"]["retail"]["foil" if foil else "normal"]
+    except (KeyError, TypeError):
+        return None, None
+    if not isinstance(block, dict) or not block:
+        return None, None
+    day = max(block)
+    return positive(block[day]), day
+
+
+def kind_of_product(name: str) -> str | None:
+    if NOT_SINGLE.search(name):
+        return None
+    n = name.casefold()
+    if re.search(r"\bplay booster(?: pack)?\b", n):
+        return "play"
+    if re.search(r"\bcollector booster(?: pack)?\b", n):
+        return "collector"
+    return None
+
+
+def select_candidates(set_list: list, today: date, min_year: int) -> list[Candidate]:
+    output = []
+    seen = set()
+    for s in set_list:
+        if s.get("isOnlineOnly") or s.get("isPartialPreview"):
+            continue
+        released = s.get("releaseDate", "")
+        if not (f"{min_year}-01-01" <= released <= today.isoformat()):
+            continue
+        for sealed in s.get("sealedProduct") or []:
+            kind = kind_of_product(sealed.get("name", ""))
+            if not kind:
+                continue
+            ids = sealed.get("identifiers") or {}
+            try:
+                product_id = int(ids.get("tcgplayerProductId"))
+            except (ValueError, TypeError):
+                continue
+            packs = (sealed.get("contents") or {}).get("pack") or []
+            if len(packs) != 1:
+                # Never guess what a product contains.
+                continue
+            pack = packs[0]
+            booster_code = str(pack.get("code", "")).lower()
+            booster_set = str(pack.get("set", "")).upper()
+            if not booster_code or not booster_set:
+                continue
+            key = (booster_set, booster_code, kind, product_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            output.append(Candidate(
+                code=str(s["code"]).upper(), name=str(s["name"]), kind=kind,
+                group_id=int(s["tcgplayerGroupId"]) if s.get("tcgplayerGroupId") else None,
+                product_id=product_id, product_name=sealed["name"],
+                booster_set=booster_set, booster_code=booster_code,
+                release_date=released,
+            ))
+    return output
+
+
+def derive_groups(groups: list, candidates: list) -> list[int]:
+    # Additional similarly-named TCGplayer groups are used for alternate printings/product listings.
+    result = {2576}  # Magic Sealed Product group
+    def group_normalize(text: str) -> str:
+        text = re.sub(r"[^a-z0-9]+", " ", text.casefold()).strip()
+        text = re.sub(r"^(?:magic the gathering|universes beyond)\s+", "", text)
+        return text
+
+    names = {group_normalize(c.name) for c in candidates}
+    for c in candidates:
+        if c.group_id:
+            result.add(c.group_id)
+    for group in groups:
+        title = str(group.get("name") or "").casefold()
+        normalized = group_normalize(title)
+        for needle in names:
+            if needle and (normalized == needle or normalized.startswith(needle + " ") or (len(needle) > 8 and needle in normalized)):
+                result.add(group["groupId"])
+                break
+    return sorted(result)
+
+
+def sealed_prices(http: HTTP, groups: list[int], candidates: list[Candidate]) -> dict[int, float]:
+    ids = {c.product_id for c in candidates}
+    found: dict[int, float] = {}
+    for index, group in enumerate(groups):
+        # Prices are matched by MTGJSON's exact TCGplayer sealed product ID, never by fuzzy name.
+        try:
+            values = http.tcg(group, "prices")
+        except SourceError as exc:
+            LOG.warning("Skipping TCGCSV group %s: %s", group, exc)
+            continue
+        for item in values:
+            try:
+                pid = int(item.get("productId"))
+            except (ValueError, TypeError):
+                continue
+            if pid not in ids:
+                continue
+            market = positive(item.get("marketPrice"))
+            if market:
+                # Same product may have multiple subtypes; prefer Normal or empty variants.
+                subtype = str(item.get("subTypeName") or "").casefold()
+                if subtype in ("normal", "", "standard", "unopened"):
+                    found[pid] = market
+        if (index + 1) % 10 == 0:
+            LOG.info("Checked %s/%s TCGCSV groups; %s/%s products priced", index + 1, len(groups), len(found), len(ids))
+    return found
+
+
+def _weighted_sampling_arrays(sheet: dict, prices: dict, is_token: bool):
+    vals: list[float] = []
+    weights: list[float] = []
+    names: list[str] = []
+    covered: list[bool] = []
+    latest: list[str] = []
+    for uuid, w in (sheet.get("cards") or {}).items():
+        weight = positive(w)
+        if weight is None:
+            continue
+        p, day = price_for_uuid(prices, uuid, bool(sheet.get("foil")))
+        covered.append(p is not None or is_token)
+        vals.append(p or 0.0)
+        weights.append(weight)
+        names.append(uuid)
+        if p is not None and day:
+            latest.append(day)
+    if not weights:
+        raise SourceError("Booster sheet missing weights/cards")
+    if sheet.get("fixed"):
+        raise SourceError("Fixed-card sheets require specialized modeling")
+    cumulative = []
+    total = 0.0
+    for w in weights:
+        total += w
+        cumulative.append(total)
+    return vals, weights, names, covered, latest, cumulative, total
+
+
+def evaluate_booster(config: dict, prices: dict, samples: int = 6000, seed: int = 5) -> tuple[float, float, float, str]:
+    """Expected EV analytically; Monte Carlo median. Color-balanced sheets are approximate.
+
+    Cards with unknown prices are zero-valued, not silently substituted with another finish.
+    Abort if unpriced non-token card slots exceed MIN_COVERAGE threshold.
+    """
+    variants = config.get("boosters") or []
+    sheets = config.get("sheets") or {}
+    if not variants or not sheets:
+        raise SourceError("Missing booster model")
+    # Color-balanced sheets are modeled by their published marginal card weights;
+    # the within-pack color correlations are NOT replicated. This makes the
+    # median an approximation (disclosed in the Discord footer).
+    prepared = {}
+    for sheet_name, sheet in sheets.items():
+        prepared[sheet_name] = _weighted_sampling_arrays(sheet, prices, bool(TOKEN_SLOT.search(sheet_name)))
+    variant_weights = []
+    ev_total = 0.0
+    covered_slots = 0.0
+    card_slots = 0.0
+    source_dates = []
+    for variant in variants:
+        variant_weight = positive(variant.get("weight"))
+        if variant_weight is None:
+            raise SourceError("Booster variant missing probability weight")
+        variant_weights.append(variant_weight)
+    overall_weight = sum(variant_weights)
+    if overall_weight <= 0:
+        raise SourceError("Invalid booster probabilities")
+    for variant, weight in zip(variants, variant_weights):
+        probability = weight / overall_weight
+        for sheet_name, amount in (variant.get("contents") or {}).items():
+            if sheet_name not in prepared:
+                raise SourceError(f"Unknown sheet: {sheet_name}")
+            vals, weights, _names, covered, days, _cum, total = prepared[sheet_name]
+            count = float(amount)
+            if count < 0 or not count.is_integer():
+                raise SourceError("Invalid pack slot count")
+            if int(count) > len(weights) and not sheets[sheet_name].get("allowDuplicates", False):
+                raise SourceError("Too many without-replacement card draws")
+            ev_total += probability * count * sum(v * w for v, w in zip(vals, weights)) / total
+            if not TOKEN_SLOT.search(sheet_name):
+                card_slots += probability * count
+                cov = sum(w for w, ok in zip(weights, covered) if ok) / total
+                covered_slots += probability * count * cov
+            source_dates.extend(days)
+    if card_slots < 4:
+        raise SourceError("Suspiciously few priced card slots")
+    coverage = covered_slots / card_slots
+    if coverage < MIN_COVERAGE:
+        raise SourceError(f"Only {coverage:.1%} of card-slot draw probability has prices")
+    # Source dates must not be silently more than 4 days old; handled by data freshness check.
+    rng = random.Random(seed)
+    variant_cumulative = []
+    acc = 0.0
+    for w in variant_weights:
+        acc += w
+        variant_cumulative.append(acc)
+    simulated = []
+    for _ in range(samples):
+        roll = rng.random() * overall_weight
+        idx = bisect.bisect_left(variant_cumulative, roll)
+        variant = variants[min(idx, len(variants) - 1)]
+        pack_val = 0.0
+        for sheet_name, amount in (variant.get("contents") or {}).items():
+            vals, _weights, names, _covered, _dates, cumulative, total = prepared[sheet_name]
+            used = set()
+            duplicates = sheets[sheet_name].get("allowDuplicates", False)
+            for _ in range(int(amount)):
+                chosen = bisect.bisect_left(cumulative, rng.random() * total)
+                if not duplicates:
+                    for _retry in range(300):
+                        if names[chosen] not in used:
+                            break
+                        chosen = bisect.bisect_left(cumulative, rng.random() * total)
+                    if names[chosen] in used:
+                        raise SourceError("Unable to simulate without-replacement draws")
+                    used.add(names[chosen])
+                pack_val += vals[chosen]
+        simulated.append(pack_val)
+    return ev_total, statistics.median(simulated), coverage, max(source_dates) if source_dates else "unknown"
+
+
+def parse_date_from_text(text: str) -> date | None:
+    match = re.search(r"(20\d{2})-(\d\d)-(\d\d)", text)
+    if match:
+        try:
+            return date.fromisoformat(match.group(0))
+        except ValueError:
+            return None
+    return None
+
+
+def fresh_or_fail(source: str, source_day: date | None, today: date, max_age: int = 4) -> None:
+    if source_day is None:
+        raise SourceError(f"Missing date for {source}; will not claim current prices")
+    if not (today - timedelta(days=max_age) <= source_day <= today + timedelta(days=1)):
+        raise SourceError(f"{source} is stale or future-dated: {source_day.isoformat()}")
+
+
+def short_name(name: str, max_width: int = 22) -> str:
+    replacements = {"Murders at Karlov Manor": "Karlov Manor", "Outlaws of Thunder Junction": "Thunder Junction",
+                    "Magic: The Gathering—FINAL FANTASY": "Final Fantasy", "Magic: The Gathering - FINAL FANTASY": "Final Fantasy",
+                    "Teenage Mutant Ninja Turtles": "TMNT", "Magic: The Gathering | Avatar: The Last Airbender": "Avatar"}
+    result = replacements.get(name, name)
+    if len(result) <= max_width:
+        return result
+    return result[: max_width - 1] + "…"
+
+
+def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: date, top_n: int) -> str:
+    title = "PLAY" if kind == "play" else "COLLECTOR"
+    # Keep only the cheapest qualifying single-pack product for each set/kind.
+    by_set: dict[str, Result] = {}
+    for r in results:
+        if r.kind == kind and (r.code not in by_set or r.price < by_set[r.code].price):
+            by_set[r.code] = r
+    selected = sorted(by_set.values(), key=lambda x: (-x.roi, x.name))[:top_n]
+    if len(selected) < 3:
+        raise SourceError(f"Only {len(selected)} qualifying {title} packs. Preserving existing Discord posts")
+    columns = f"{'#':>2}  {'SET':<22} {'PRICE':>7} {'EV':>7} {'TYP':>7} {'ROI':>5}"
+    def dollars(x: float) -> str:
+        return ("$" + f"{x:.2f}").rjust(7)
+
+    lines = [f"{n:>2}  {short_name(r.name):<22} {dollars(r.price)} {dollars(r.ev)} {dollars(r.median)} {r.roi:>4.0f}%"
+             for n, r in enumerate(selected, 1)]
+    message = (
+        f"**MTG {title} BOOSTERS — BEST VALUE**\n"
+        f"TCGplayer singles: {card_date.isoformat()} | Sealed: {tcg_date.isoformat()} (USD)\n"
+        + "```text\n" + columns + "\n" + "-" * len(columns) + "\n" + "\n".join(lines) + "\n```\n"
+        + "**EV:** modeled average card market value | **TYP:** simulated median | **ROI:** EV ÷ pack market price.\n"
+        + "*Before fees, tax or shipping. No guarantee of profit. Only sets with matched single-pack market prices, modeled booster contents and ≥97% priced non-token slots qualify. Token/ad slots valued $0. Approximate median; color balancing not simulated. Not actual opening data.*\n"
+        + "Sources: [MTGJSON](https://mtgjson.com/) · [TCGCSV](https://tcgcsv.com/)"
+    )
+    if len(message) > 2000:
+        raise SourceError("Discord 2000-character content limit exceeded; reduce --top")
+    return message
+
+
+def publish_discord(messages: dict[str, str], webhook: str, state_path: Path) -> None:
+    if not re.match(r"^https://(?:discord(?:app)?\.com)/api/webhooks/\d+/[A-Za-z0-9_\-]+/?$", webhook):
+        raise SourceError("Invalid Discord webhook URL")
+    state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
+    session = requests.Session()
+
+    def send(method: str, url: str, payload: dict) -> requests.Response:
+        for attempt in range(5):
+            response = session.request(method, url, json=payload, timeout=20)
+            if response.status_code == 429:
+                try:
+                    wait = min(float(response.json().get("retry_after", 1)), 60)
+                except (ValueError, TypeError):
+                    wait = 1.0
+                time.sleep(wait + .2)
+                continue
+            if response.status_code >= 500 and attempt < 4:
+                time.sleep(2 ** attempt)
+                continue
+            return response
+        raise SourceError("Discord webhook rate-limited repeatedly")
+
+    for kind in ("play", "collector"):
+        content = messages[kind]
+        id_value = state.get(kind)
+        if id_value:
+            response = send("PATCH", f"{webhook.rstrip('/')}/messages/{id_value}", {"content": content, "allowed_mentions": {"parse": []}})
+            if response.status_code == 404:
+                LOG.warning("Original %s message missing; creating a replacement", kind)
+            else:
+                response.raise_for_status()
+                LOG.info("Edited existing %s post (%s)", kind, id_value)
+                continue
+        response = send("POST", webhook.rstrip("/") + "?wait=true", {"content": content, "allowed_mentions": {"parse": []}})
+        response.raise_for_status()
+        new_id = str(response.json()["id"])
+        state[kind] = new_id
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+        LOG.info("Created %s post (%s); save this state file", kind, new_id)
+
+
+def run(args) -> None:
+    today = datetime.now(timezone.utc).date()
+    http = HTTP()
+    meta_sets = http.mtgjson("SetList.json")
+    candidates = select_candidates(meta_sets["data"], today, args.min_year)
+    LOG.info("Found %s recent single-pack sealed products mapped to booster configs", len(candidates))
+    if not candidates:
+        raise SourceError("No exact MTGJSON product-to-booster mappings found")
+    tstamp = http.get("https://tcgcsv.com/last-updated.txt")
+    tcg_date = parse_date_from_text(str(tstamp))
+    fresh_or_fail("TCGCSV", tcg_date, today)
+    groups = http.get(TCGCSV + "/groups").get("results", [])
+    group_ids = derive_groups(groups, candidates)
+    LOG.info("Checking %s TCGCSV groups (throttled to 4-5 requests/second)", len(group_ids))
+    sealed = sealed_prices(http, group_ids, candidates)
+    prices_file = http.get(MTGJSON + "/AllPricesToday.json.gz", as_bytes=True)
+    prices_json = json.loads(gzip.decompress(prices_file))
+    prices = prices_json.get("data", {})
+    date_candidates = [str(prices_json.get("meta", {}).get("date", ""))]
+    if not prices:
+        raise SourceError("MTGJSON AllPricesToday has no data")
+    card_date = parse_date_from_text(date_candidates[0])
+    if card_date is None:
+        # The data file may use a timestamp-shaped metadata object; if not, fail rather than claim freshness.
+        raise SourceError("MTGJSON current-price file doesn't include a parseable snapshot date")
+    fresh_or_fail("MTGJSON", card_date, today)
+    results: list[Result] = []
+    loaded: dict[str, dict] = {}
+    for item in candidates:
+        cost = sealed.get(item.product_id)
+        if cost is None:
+            LOG.info("No market price for %s (TCGplayer product %s)", item.product_name, item.product_id)
+            continue
+        if item.booster_set not in loaded:
+            try:
+                loaded[item.booster_set] = http.mtgjson(f"{item.booster_set}.json")["data"]
+            except (SourceError, KeyError) as exc:
+                LOG.warning("Skipping %s: cannot load set %s (%s)", item.name, item.booster_set, exc)
+                continue
+        config = (loaded[item.booster_set].get("booster") or {}).get(item.booster_code)
+        if config is None:
+            LOG.warning("Skipping %s: booster config %s is absent", item.name, item.booster_code)
+            continue
+        try:
+            ev, typical, cov, price_day = evaluate_booster(config, prices, samples=args.samples, seed=42)
+            if price_day != "unknown":
+                latest = parse_date_from_text(price_day)
+                fresh_or_fail(f"Price entries for {item.name}", latest, today, max_age=5)
+        except SourceError as exc:
+            LOG.warning("Skipping %s %s: %s", item.name, item.kind, exc)
+            continue
+        results.append(Result(item.name, item.code, item.kind, cost, ev, typical, ev / cost * 100, cov, price_day, item.product_id))
+        LOG.info("Qualified %-27s %-9s price $%.2f EV $%.2f ROI %.1f%%", item.name[:27], item.kind, cost, ev, ev / cost * 100)
+    messages = {kind: format_discord(kind, results, tcg_date, card_date, args.top) for kind in ("play", "collector")}
+    output = Path(args.output)
+    output.mkdir(parents=True, exist_ok=True)
+    for kind, content in messages.items():
+        (output / f"{kind}.txt").write_text(content + "\n", encoding="utf-8")
+    (output / "data.json").write_text(json.dumps([x.__dict__ for x in results], indent=2) + "\n", encoding="utf-8")
+    LOG.info("Saved ranked previews to %s", output)
+    if args.dry_run:
+        print(messages["play"] + "\n\n" + messages["collector"])
+    else:
+        webhook = os.environ.get("DISCORD_WEBHOOK_URL", "")
+        if not webhook:
+            raise SourceError("Set DISCORD_WEBHOOK_URL repository secret before publishing")
+        publish_discord(messages, webhook, Path(args.state))
+
+
+def main():
+    p = argparse.ArgumentParser(description="MTG Play/Collector EV Discord leaderboard")
+    p.add_argument("--dry-run", action="store_true", help="Generate previews without Discord POST/PATCH")
+    p.add_argument("--min-year", type=int, default=2024)
+    p.add_argument("--samples", type=int, default=6000)
+    p.add_argument("--top", type=int, default=12)
+    p.add_argument("--output", default="output")
+    p.add_argument("--state", default=str(STATE_FILE))
+    args = p.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    try:
+        run(args)
+    except (SourceError, requests.RequestException) as exc:
+        LOG.error("No Discord messages were edited: %s", exc)
+        raise SystemExit(1) from exc
+
+
+if __name__ == "__main__":
+    main()
