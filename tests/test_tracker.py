@@ -92,7 +92,7 @@ class SourceTests(unittest.TestCase):
         self.assertLessEqual(len(message), 2000)
         records = [{"uuid": str(i), "name": f"Card {i}", "colors": [["W"], ["U"], ["B"], ["R"], ["G"]][i % 5],
                     "types": ["Creature"], "subtypes": ["Dragon"]} for i in range(15)]
-        config = {"boosters": [{"weight": 1, "contents": {"creatures": 1}}],
+        config = {"boosters": [{"weight": 1, "contents": {"creatures": 2}}],
                   "sheets": {"creatures": {"cards": {str(i): 1 for i in range(15)}}}}
         profile = booster_card_profile(config, {"cards": records})
         self.assertIn("All 5", profile)
