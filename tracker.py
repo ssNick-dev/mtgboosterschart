@@ -542,7 +542,7 @@ def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: 
     if len(selected) < 3:
         raise SourceError(f"Only {len(selected)} qualifying {title} packs. Preserving existing Discord posts")
 
-    def render(profile_width: int, include_dates: bool) -> str:
+    def render(profile_width: int, include_dates: bool, compact: bool = False) -> str:
         header = f"**MTG {title} BOOSTERS - TOP {len(selected)} VALUE**\n"
         if include_dates:
             header += f"Cards: {card_date.isoformat()} | Packs: {tcg_date.isoformat()} | USD\n"
