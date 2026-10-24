@@ -526,7 +526,7 @@ def publish_discord(messages: dict[str, str], webhook: str, state_path: Path) ->
             return response
         raise SourceError("Discord webhook rate-limited repeatedly")
 
-    for kind in ("status", "play", "collector"):
+    for kind in ("play", "collector", "status"):
         content = messages[kind]
         # Use visible text, and clear any previously hidden embeds.
         payload = {"content": content, "embeds": [],
@@ -614,24 +614,7 @@ def run(args) -> None:
     partial_count = sum("(partial)" in r.profile or "profile limited" in r.profile or
                         "profile unavailable" in r.profile for r in results)
     checked_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    messages["status"] = (
-        "**MTG BOOSTER TRACKER - DATA & STATUS**\n"
-        f"Last successful data check: {checked_at}\n"
-        f"Card-price snapshot: {card_date.isoformat()} (MTGJSON)\n"
-        f"Sealed-pack snapshot: {tcg_date.isoformat()} (TCGCSV)\n"
-        f"Qualifying sets: {play_count} Play | {collector_count} Collector\n"
-        f"Partial/unavailable card profiles: {partial_count}\n\n"
-        "**HOW TO READ THE RANKINGS**\n"
-        "Pack = matched single-booster market price.\n"
-        "EV = modeled average card value per pack.\n"
-        "Median = modeled typical pack value.\n"
-        "ROI = EV divided by pack price (not guaranteed profit).\n"
-        "Colors/types are modeled booster-pool summaries; 'partial' means incomplete metadata.\n\n"
-        "Prices are market snapshots, not live checkout quotes. "
-        "Estimates exclude selling fees, taxes and shipping. "
-        "Card contents and rarity probabilities are modeled, not observed openings.\n\n"
-        "Sources: MTGJSON card prices/booster configurations; TCGCSV sealed-product prices."
-    )
+    messages["status"] = f"**Last price refresh:** <t:{int(datetime.now(timezone.utc).timestamp())}:F>"
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
     for kind, content in messages.items():
