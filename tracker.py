@@ -273,7 +273,9 @@ def evaluate_booster(config: dict, prices: dict, samples: int = 6000, seed: int 
     sheets = config.get("sheets") or {}
     if not variants or not sheets:
         raise SourceError("Missing booster model")
-    if samples < 100:\n        raise SourceError("At least 100 simulated boosters required")\n    # Color-balanced sheets are modeled by their published marginal card weights;
+    if samples < 100:
+        raise SourceError("At least 100 simulated boosters required")
+    # Color-balanced sheets are modeled by their published marginal card weights;
     # the within-pack color correlations are NOT replicated. This makes the
     # median an approximation (disclosed in the Discord footer).
     prepared = {}
@@ -283,7 +285,8 @@ def evaluate_booster(config: dict, prices: dict, samples: int = 6000, seed: int 
     ev_total = 0.0
     covered_slots = 0.0
     card_slots = 0.0
-    source_dates = []\n    has_weighted_without_replacement = False
+    source_dates = []
+    has_weighted_without_replacement = False
     for variant in variants:
         variant_weight = positive(variant.get("weight"))
         if variant_weight is None:
@@ -336,18 +339,31 @@ def evaluate_booster(config: dict, prices: dict, samples: int = 6000, seed: int 
             used = set()
             duplicates = sheets[sheet_name].get("allowDuplicates", False)
             for _ in range(int(amount)):
-                chosen = bisect.bisect_left(cumulative, rng.random() * total)
-                if not duplicates:
-                    for _retry in range(300):
-                        if names[chosen] not in used:
+                if duplicates:
+                    chosen = bisect.bisect_left(cumulative, rng.random() * total)
+                else:
+                    # Reweight the remaining eligible cards on every draw.
+                    # Rejection sampling has a high failure probability when
+                    # one card dominates the sheet's weights.
+                    remaining = [(i, w) for i, w in enumerate(_weights)
+                                 if names[i] not in used]
+                    available_total = sum(w for _, w in remaining)
+                    if available_total <= 0:
+                        raise SourceError("No eligible cards left in sheet")
+                    roll = rng.random() * available_total
+                    running = 0.0
+                    chosen = remaining[-1][0]
+                    for index, weight in remaining:
+                        running += weight
+                        if roll < running:
+                            chosen = index
                             break
-                        chosen = bisect.bisect_left(cumulative, rng.random() * total)
-                    if names[chosen] in used:
-                        raise SourceError("Unable to simulate without-replacement draws")
                     used.add(names[chosen])
                 pack_val += vals[chosen]
         simulated.append(pack_val)
-    if has_weighted_without_replacement:\n        ev_total = statistics.mean(simulated)\n    return ev_total, statistics.median(simulated), coverage, max(source_dates) if source_dates else "unknown"
+    if has_weighted_without_replacement:
+        ev_total = statistics.mean(simulated)
+    return ev_total, statistics.median(simulated), coverage, max(source_dates) if source_dates else "unknown"
 
 
 
@@ -685,7 +701,8 @@ def run(args) -> None:
     previous = history.get("latest", {})
     results: list[Result] = []
     loaded: dict[str, dict] = {}
-    profiles_cache: dict[tuple[str, str], str] = {}\n    audit_findings: dict[str, list[str]] = {}
+    profiles_cache: dict[tuple[str, str], str] = {}
+    audit_findings: dict[str, list[str]] = {}
     for item in candidates:
         cost = sealed.get(item.product_id)
         if cost is None:
@@ -701,6 +718,10 @@ def run(args) -> None:
         if config is None:
             LOG.warning("Skipping %s: booster config %s is absent", item.name, item.booster_code)
             continue
+        audit_key = f"{item.booster_set}:{item.booster_code}"
+        audit_findings[audit_key] = audit_booster_config(config)
+        for finding in audit_findings[audit_key]:
+            LOG.warning("Model audit %s: %s", audit_key, finding)
         try:
             ev, typical, cov, price_day = evaluate_booster(config, prices, samples=args.samples, seed=42)
             if price_day != "unknown":
@@ -744,7 +765,8 @@ def run(args) -> None:
     for kind, content in messages.items():
         (output / f"{kind}.txt").write_text(content + "\n", encoding="utf-8")
     (output / "data.json").write_text(json.dumps([x.__dict__ for x in results], indent=2) + "\n", encoding="utf-8")
-    (output / "booster_audit.json").write_text(json.dumps(audit_findings, indent=2) + "\n", encoding="utf-8")\n    LOG.info("Saved ranked previews to %s", output)
+    (output / "booster_audit.json").write_text(json.dumps(audit_findings, indent=2) + "\n", encoding="utf-8")
+    LOG.info("Saved ranked previews to %s", output)
     snapshot = {f"{r.kind}:{r.code}": {"price": r.price, "ev": r.ev,
                 "net_ev": r.net_ev, "confidence": r.confidence,
                 "risk": r.risk, "roi": r.roi} for r in results}
