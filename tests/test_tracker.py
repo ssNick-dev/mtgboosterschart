@@ -94,7 +94,7 @@ class SourceTests(unittest.TestCase):
                     "types": ["Creature"], "subtypes": ["Dragon"]} for i in range(15)]
         config = {"sheets": {"creatures": {"cards": {str(i): 1 for i in range(15)}}}}
         profile = booster_card_profile(config, {"cards": records})
-        self.assertIn("WUBRG", profile)
+        self.assertIn("All 5", profile)
         self.assertIn("Dragon", profile)
 
 
