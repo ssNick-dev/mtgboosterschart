@@ -130,6 +130,23 @@ class SourceTests(unittest.TestCase):
 
 
 
+    def test_rank_movement_stays_with_the_title(self):
+        results = [
+            Result("Edge of Eternities", "EOE", "collector", 7, 6, 4, 90, 1,
+                   "2026-10-24", 1, movement="—"),
+            Result("Final Fantasy", "FIN", "collector", 7, 6, 4, 80, 1,
+                   "2026-10-24", 2, movement="▲1"),
+            Result("Ravnica Remastered", "RVR", "collector", 7, 6, 4, 70, 1,
+                   "2026-10-24", 3, movement="▼2"),
+        ]
+        message = format_discord("collector", results, date(2026, 10, 24),
+                                 date(2026, 10, 24), 3)
+        self.assertIn("**01. Edge of Eternities**\n", message)
+        self.assertIn("**02. ▲1 Final Fantasy**\n", message)
+        self.assertIn("**03. ▼2 Ravnica Remastered**\n", message)
+        self.assertNotIn("** —\n", message)
+        self.assertNotIn("** ▲1\n", message)
+
     def test_whole_word_profiles_fit_all_fifteen(self):
         profile = "All 5 (U-lean) + colorless | Detectives, Rogues, Enchantments (partial)"
         results = [Result(f"Long Name Set {i}", str(i), "collector", 5, 8, 2,
