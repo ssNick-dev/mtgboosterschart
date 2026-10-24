@@ -620,9 +620,11 @@ def format_discord(kind: str, results: list[Result], tcg_date: date,
         header = f"**MTG {title} BOOSTERS — TOP {len(selected)} VALUE**\n"
         lines = []
         for rank, result in enumerate(selected, 1):
-            title_line = f"**{rank:02d}. {short_name(result.name, max_width=28)}**"
-            if result.movement:
-                title_line += f" {result.movement}"
+            # Keep movement with the rank inside the same bold span.
+            # Unchanged positions do not need a dangling dash.
+            movement = result.movement.strip()
+            prefix = f"{movement} " if movement and movement != "—" else ""
+            title_line = f"**{rank:02d}. {prefix}{short_name(result.name, max_width=28)}**"
             profile = compact_profile(result.profile, width)
             if style == 0:
                 detail = (
