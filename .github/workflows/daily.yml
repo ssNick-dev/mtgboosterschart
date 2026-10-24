@@ -51,8 +51,6 @@ jobs:
           path: |
             output/booster_audit.json
             output/data.json
-            output/play.json
-            output/collector.json
             output/play.txt
             output/collector.txt
           if-no-files-found: ignore
