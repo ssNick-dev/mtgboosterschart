@@ -13,6 +13,7 @@ import random
 import re
 import statistics
 import time
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -58,6 +59,7 @@ class Result:
     coverage: float
     card_price_day: str
     source_product_id: int
+    profile: str = "Card profile unavailable"
 
 
 class SourceError(RuntimeError):
@@ -367,9 +369,66 @@ def short_name(name: str, max_width: int = 22) -> str:
     return result[: max_width - 1] + "…"
 
 
+def booster_card_profile(config: dict, set_data: dict) -> str:
+    """Summarize the actual card UUIDs on the booster sheets, not assumed themes."""
+    cards = {c["uuid"]: c for c in set_data.get("cards", []) if c.get("uuid")}
+    possible = set()
+    for sheet_name, sheet in (config.get("sheets") or {}).items():
+        if not TOKEN_SLOT.search(sheet_name):
+            possible.update((sheet.get("cards") or {}).keys())
+    if not possible or len(possible & cards.keys()) / len(possible) < 0.70:
+        return "Card profile unavailable"
+    named = {}
+    for uuid in possible:
+        card = cards.get(uuid)
+        if card and card.get("name"):
+            named.setdefault(card["name"], card)
+    colors = set()
+    colorless_nonlands = 0
+    eligible_nonlands = 0
+    tribes = Counter()
+    noncreature_types = Counter()
+    for card in named.values():
+        types = set(card.get("types") or [])
+        if "Land" in types or "Token" in types:
+            continue
+        eligible_nonlands += 1
+        printed_colors = set(card.get("colors") or []) & set("WUBRG")
+        colors.update(printed_colors)
+        if not printed_colors:
+            colorless_nonlands += 1
+        if "Creature" in types:
+            tribes.update(set(card.get("subtypes") or []))
+        for kind in ("Artifact", "Enchantment", "Planeswalker", "Battle", "Instant", "Sorcery"):
+            if kind in types:
+                noncreature_types[kind] += 1
+    if eligible_nonlands < 10 or not colors:
+        return "Card profile unavailable"
+    color_label = "".join(c for c in "WUBRG" if c in colors)
+    if colorless_nonlands / eligible_nonlands >= 0.07:
+        color_label += "+C"
+    distinct_tribes = [(t, n) for t, n in tribes.most_common() if t != "Human" and n >= 3]
+    if len(distinct_tribes) < 2 and tribes.get("Human", 0) >= 3:
+        distinct_tribes.append(("Human", tribes["Human"]))
+    focus = [x for x, _ in distinct_tribes[:2]]
+    if not focus:
+        focus = ["Creatures"] if any("Creature" in (c.get("types") or []) for c in named.values()) else []
+    highlights = [(kind, n) for kind, n in noncreature_types.most_common()
+                  if kind in ("Artifact", "Enchantment", "Planeswalker", "Battle")
+                  and n / eligible_nonlands >= 0.09]
+    plural = {"Artifact": "Artifacts", "Enchantment": "Enchantments",
+              "Planeswalker": "Planeswalkers", "Battle": "Battles",
+              "Instant": "Instants", "Sorcery": "Sorceries"}
+    if highlights:
+        focus.append(plural[highlights[0][0]])
+    elif len(focus) < 2 and noncreature_types:
+        focus.append(plural[noncreature_types.most_common(1)[0][0]])
+    description = ", ".join(focus) or "Mixed card types"
+    return f"{color_label} | {description}"[:48]
+
+
 def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: date, top_n: int) -> str:
     title = "PLAY" if kind == "play" else "COLLECTOR"
-    # Keep only the cheapest qualifying single-pack product for each set/kind.
     by_set: dict[str, Result] = {}
     for r in results:
         if r.kind == kind and (r.code not in by_set or r.price < by_set[r.code].price):
@@ -380,19 +439,20 @@ def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: 
     columns = f"{'#':>2}  {'SET':<22} {'PRICE':>7} {'EV':>7} {'TYP':>7} {'ROI':>5}"
     def dollars(x: float) -> str:
         return ("$" + f"{x:.2f}").rjust(7)
-
-    lines = [f"{n:>2}  {short_name(r.name):<22} {dollars(r.price)} {dollars(r.ev)} {dollars(r.median)} {r.roi:>4.0f}%"
-             for n, r in enumerate(selected, 1)]
+    rows = [f"{n:>2}  {short_name(r.name):<22} {dollars(r.price)} {dollars(r.ev)} {dollars(r.median)} {r.roi:>4.0f}%"
+            for n, r in enumerate(selected, 1)]
+    profiles = [f"{n:>2}  {short_name(r.name):<22} {r.profile}" for n, r in enumerate(selected, 1)]
     message = (
-        f"**MTG {title} BOOSTERS — BEST VALUE**\n"
-        f"TCGplayer singles: {card_date.isoformat()} | Sealed: {tcg_date.isoformat()} (USD)\n"
-        + "```text\n" + columns + "\n" + "-" * len(columns) + "\n" + "\n".join(lines) + "\n```\n"
-        + "**EV:** modeled average card market value | **TYP:** simulated median | **ROI:** EV ÷ pack market price.\n"
-        + "*Before fees, tax or shipping. No guarantee of profit. Only sets with matched single-pack market prices, modeled booster contents and ≥97% priced non-token slots qualify. Token/ad slots valued $0. Approximate median; color balancing not simulated. Not actual opening data.*\n"
-        + "Sources: [MTGJSON](https://mtgjson.com/) · [TCGCSV](https://tcgcsv.com/)"
+        f"**MTG {title} BOOSTERS — TOP {len(selected)} VALUE**\n"
+        f"Cards: {card_date.isoformat()} | Packs: {tcg_date.isoformat()} | USD\n"
+        + "```text\n" + columns + "\n" + "-" * len(columns) + "\n" + "\n".join(rows) + "\n```\n"
+        + "**COLORS & CARD TYPES** (from booster card pools)\n"
+        + "```text\n" + "\n".join(profiles) + "\n```\n"
+        + "**EV** average card value · **TYP** median · **ROI** EV / pack price\n"
+        + "W/U/B/R/G = white/blue/black/red/green; C = colorless"
     )
-    if len(message) > 2000:
-        raise SourceError("Discord 2000-character content limit exceeded; reduce --top")
+    if len(message) > 4096:
+        raise SourceError("Discord embed description limit exceeded; reduce --top")
     return message
 
 
@@ -420,16 +480,18 @@ def publish_discord(messages: dict[str, str], webhook: str, state_path: Path) ->
 
     for kind in ("play", "collector"):
         content = messages[kind]
+        payload = {"content": "", "embeds": [{"description": content}],
+                   "allowed_mentions": {"parse": []}}
         id_value = state.get(kind)
         if id_value:
-            response = send("PATCH", f"{webhook.rstrip('/')}/messages/{id_value}", {"content": content, "allowed_mentions": {"parse": []}})
+            response = send("PATCH", f"{webhook.rstrip('/')}/messages/{id_value}", payload)
             if response.status_code == 404:
                 LOG.warning("Original %s message missing; creating a replacement", kind)
             else:
                 response.raise_for_status()
                 LOG.info("Edited existing %s post (%s)", kind, id_value)
                 continue
-        response = send("POST", webhook.rstrip("/") + "?wait=true", {"content": content, "allowed_mentions": {"parse": []}})
+        response = send("POST", webhook.rstrip("/") + "?wait=true", payload)
         response.raise_for_status()
         new_id = str(response.json()["id"])
         state[kind] = new_id
@@ -466,6 +528,7 @@ def run(args) -> None:
     fresh_or_fail("MTGJSON", card_date, today)
     results: list[Result] = []
     loaded: dict[str, dict] = {}
+    profiles_cache: dict[tuple[str, str], str] = {}
     for item in candidates:
         cost = sealed.get(item.product_id)
         if cost is None:
@@ -489,7 +552,12 @@ def run(args) -> None:
         except SourceError as exc:
             LOG.warning("Skipping %s %s: %s", item.name, item.kind, exc)
             continue
-        results.append(Result(item.name, item.code, item.kind, cost, ev, typical, ev / cost * 100, cov, price_day, item.product_id))
+        profile_key = (item.booster_set, item.booster_code)
+        if profile_key not in profiles_cache:
+            profiles_cache[profile_key] = booster_card_profile(config, loaded[item.booster_set])
+        results.append(Result(item.name, item.code, item.kind, cost, ev, typical,
+                              ev / cost * 100, cov, price_day, item.product_id,
+                              profiles_cache[profile_key]))
         LOG.info("Qualified %-27s %-9s price $%.2f EV $%.2f ROI %.1f%%", item.name[:27], item.kind, cost, ev, ev / cost * 100)
     messages = {kind: format_discord(kind, results, tcg_date, card_date, args.top) for kind in ("play", "collector")}
     output = Path(args.output)
@@ -512,7 +580,7 @@ def main():
     p.add_argument("--dry-run", action="store_true", help="Generate previews without Discord POST/PATCH")
     p.add_argument("--min-year", type=int, default=2024)
     p.add_argument("--samples", type=int, default=6000)
-    p.add_argument("--top", type=int, default=12)
+    p.add_argument("--top", type=int, default=15)
     p.add_argument("--output", default="output")
     p.add_argument("--state", default=str(STATE_FILE))
     args = p.parse_args()
