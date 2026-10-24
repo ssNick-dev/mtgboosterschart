@@ -84,7 +84,7 @@ class SourceTests(unittest.TestCase):
         self.assertIn("Pack $4.00", message)
         self.assertIn("Net $2.50", message)
         self.assertIn("All 5 — Dragons, Artifacts", message)
-        self.assertEqual(message.count("**0"), 8)
+        self.assertEqual(message.count("**#0"), 8)
 
     def test_new_metrics(self):
         self.assertEqual(net_price(0.50), 0.0)
@@ -141,11 +141,13 @@ class SourceTests(unittest.TestCase):
         ]
         message = format_discord("collector", results, date(2026, 10, 24),
                                  date(2026, 10, 24), 3)
-        self.assertIn("**01. Edge of Eternities**\n", message)
-        self.assertIn("**02. ▲1 Final Fantasy**\n", message)
-        self.assertIn("**03. ▼2 Ravnica Remastered**\n", message)
+        self.assertIn("**#01 Edge of Eternities**\n", message)
+        self.assertIn("**#02 ▲1 Final Fantasy**\n", message)
+        self.assertIn("**#03 ▼2 Ravnica Remastered**\n", message)
         self.assertNotIn("** —\n", message)
         self.assertNotIn("** ▲1\n", message)
+        self.assertNotRegex(message, r"(?m)^\*\*\d+\.")
+        self.assertIn("**#01 Edge of Eternities**\nPack $7.00", message)
 
     def test_whole_word_profiles_fit_all_fifteen(self):
         profile = "All 5 (U-lean) + colorless | Detectives, Rogues, Enchantments (partial)"
@@ -192,7 +194,7 @@ class SourceTests(unittest.TestCase):
         self.assertIn("TOP 15", message)
         self.assertLessEqual(len(message), 2000)
         self.assertEqual(message.count("WUBRG — Dragons, Artifacts"), 15)
-        self.assertIn("**15. Set 14**", message)
+        self.assertIn("**#15 Set 14**", message)
         records = [{"uuid": str(i), "name": f"Card {i}", "colors": [["W"], ["U"], ["B"], ["R"], ["G"]][i % 5],
                     "types": ["Creature"], "subtypes": ["Dragon"]} for i in range(15)]
         config = {"boosters": [{"weight": 1, "contents": {"creatures": 2}}],
