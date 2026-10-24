@@ -468,7 +468,7 @@ def booster_card_profile(config: dict, set_data: dict) -> str:
     return f"{label} | {', '.join(focus)}{suffix}"[:48]
 
 def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: date, top_n: int) -> str:
-    """Compact, normal Discord message text: visible even when embeds are hidden."""
+    """Show rank-matched set names and card profiles without overflowing Discord."""
     title = "PLAY" if kind == "play" else "COLLECTOR"
     by_set: dict[str, Result] = {}
     for r in results:
@@ -479,25 +479,46 @@ def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: 
         raise SourceError(f"Only {len(selected)} qualifying {title} packs. Preserving existing Discord posts")
 
     columns = f"{'#':>2} {'SET':<20} {'PACK':>7} {'EV':>7} {'TYP':>7} {'ROI':>5}"
+
     def dollars(x: float) -> str:
         return ("$" + f"{x:.2f}").rjust(7)
 
-    rows = [f"{n:>2} {short_name(r.name, max_width=20):<20} {dollars(r.price)} {dollars(r.ev)} {dollars(r.median)} {r.roi:>4.0f}%"
-            for n, r in enumerate(selected, 1)]
-    # Profiles match rank numbers to avoid repeating names and exceeding 2000 characters.
-    profiles = [f"{n:>2} {r.profile[:48]}" for n, r in enumerate(selected, 1)]
-    message = (
-        f"**MTG {title} BOOSTERS - TOP {len(selected)} VALUE**\n"
-        f"Cards: {card_date.isoformat()} | Packs: {tcg_date.isoformat()} | USD\n"
-        + "```text\n" + columns + "\n" + "-" * len(columns) + "\n" + "\n".join(rows) + "\n```\n"
-        + "**COLORS & CARD TYPES** (same rank numbers; partial if missing bonus cards)\n"
-        + "```text\n" + "\n".join(profiles) + "\n```\n"
-        + "EV = average | TYP = median | ROI = EV / pack\n"
-        + "Colors: W/U/B/R/G = five MTG colors; C = colorless"
-    )
-    if len(message) > 2000:
-        raise SourceError("Discord 2000-character content limit exceeded; reduce --top")
-    return message
+    rows = [
+        f"{n:>2} {short_name(r.name, max_width=20):<20} "
+        f"{dollars(r.price)} {dollars(r.ev)} {dollars(r.median)} {r.roi:>4.0f}%"
+        for n, r in enumerate(selected, 1)
+    ]
+
+    def compact_profile(profile: str, width: int) -> str:
+        if len(profile) <= width:
+            return profile
+        # Prefer dropping the trailing category rather than cutting words mid-label.
+        parts = profile.rsplit(", ", 1)
+        if len(parts) > 1 and len(parts[0]) <= width:
+            return parts[0]
+        return profile[:width - 1].rstrip() + "…"
+
+    def render(profile_width: int) -> str:
+        profiles = [
+            f"{n:>2} {short_name(r.name, max_width=18):<18} {compact_profile(r.profile, profile_width)}"
+            for n, r in enumerate(selected, 1)
+        ]
+        return (
+            f"**MTG {title} BOOSTERS - TOP {len(selected)} VALUE**\n"
+            f"Cards: {card_date.isoformat()} | Packs: {tcg_date.isoformat()} | USD\n"
+            + "```text\n" + columns + "\n" + "-" * len(columns) + "\n" + "\n".join(rows) + "\n```\n"
+            + "**COLORS & CARD TYPES**\n"
+            + "```text\n" + "\n".join(profiles) + "\n```\n"
+            + "EV = average | TYP = median | ROI = EV / pack\n"
+            + "Colors: W/U/B/R/G = MTG colors; C = colorless"
+        )
+
+    # Keep all 15 named sets, shortening descriptions only if necessary.
+    for profile_width in (48, 44, 40, 36, 32, 28, 24, 20, 16, 12):
+        message = render(profile_width)
+        if len(message) <= 2000:
+            return message
+    raise SourceError("Discord 2000-character limit exceeded even with compact set profiles")
 
 
 def publish_discord(messages: dict[str, str], webhook: str, state_path: Path) -> None:
