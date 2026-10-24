@@ -410,6 +410,32 @@ def load_history(path: Path) -> dict:
         return {}
 
 
+
+def audit_booster_config(config: dict) -> list[str]:
+    """Surface modeling limitations instead of silently claiming pack accuracy."""
+    findings = []
+    variants = config.get("boosters") or []
+    sheets = config.get("sheets") or {}
+    if not variants or not sheets:
+        return ["missing booster configuration"]
+    for name, sheet in sheets.items():
+        if sheet.get("fixed"):
+            findings.append(f"{name}: fixed-card sheet unsupported")
+        if sheet.get("balanceColors"):
+            findings.append(f"{name}: color-balanced draws approximated")
+        if not sheet.get("cards"):
+            findings.append(f"{name}: empty card pool")
+    for variant in variants:
+        for name, count in (variant.get("contents") or {}).items():
+            if name not in sheets:
+                findings.append(f"unknown sheet: {name}")
+            elif int(count) > 1 and not sheets[name].get("allowDuplicates", False):
+                weights = [positive(w) for w in (sheets[name].get("cards") or {}).values()]
+                if len(set(weights)) > 1:
+                    findings.append(f"{name}: weighted without-replacement EV uses Monte Carlo")
+    return sorted(set(findings))
+
+
 def parse_date_from_text(text: str) -> date | None:
     match = re.search(r"(20\d{2})-(\d\d)-(\d\d)", text)
     if match:
@@ -659,7 +685,7 @@ def run(args) -> None:
     previous = history.get("latest", {})
     results: list[Result] = []
     loaded: dict[str, dict] = {}
-    profiles_cache: dict[tuple[str, str], str] = {}
+    profiles_cache: dict[tuple[str, str], str] = {}\n    audit_findings: dict[str, list[str]] = {}
     for item in candidates:
         cost = sealed.get(item.product_id)
         if cost is None:
@@ -718,7 +744,7 @@ def run(args) -> None:
     for kind, content in messages.items():
         (output / f"{kind}.txt").write_text(content + "\n", encoding="utf-8")
     (output / "data.json").write_text(json.dumps([x.__dict__ for x in results], indent=2) + "\n", encoding="utf-8")
-    LOG.info("Saved ranked previews to %s", output)
+    (output / "booster_audit.json").write_text(json.dumps(audit_findings, indent=2) + "\n", encoding="utf-8")\n    LOG.info("Saved ranked previews to %s", output)
     snapshot = {f"{r.kind}:{r.code}": {"price": r.price, "ev": r.ev,
                 "net_ev": r.net_ev, "confidence": r.confidence,
                 "risk": r.risk, "roi": r.roi} for r in results}
