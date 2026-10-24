@@ -428,6 +428,7 @@ def booster_card_profile(config: dict, set_data: dict) -> str:
 
 
 def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: date, top_n: int) -> str:
+    """Compact, normal Discord message text: visible even when embeds are hidden."""
     title = "PLAY" if kind == "play" else "COLLECTOR"
     by_set: dict[str, Result] = {}
     for r in results:
@@ -436,23 +437,26 @@ def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: 
     selected = sorted(by_set.values(), key=lambda x: (-x.roi, x.name))[:top_n]
     if len(selected) < 3:
         raise SourceError(f"Only {len(selected)} qualifying {title} packs. Preserving existing Discord posts")
-    columns = f"{'#':>2}  {'SET':<22} {'PRICE':>7} {'EV':>7} {'TYP':>7} {'ROI':>5}"
+
+    columns = f"{'#':>2} {'SET':<20} {'PACK':>7} {'EV':>7} {'TYP':>7} {'ROI':>5}"
     def dollars(x: float) -> str:
         return ("$" + f"{x:.2f}").rjust(7)
-    rows = [f"{n:>2}  {short_name(r.name):<22} {dollars(r.price)} {dollars(r.ev)} {dollars(r.median)} {r.roi:>4.0f}%"
+
+    rows = [f"{n:>2} {short_name(r.name, max_width=20):<20} {dollars(r.price)} {dollars(r.ev)} {dollars(r.median)} {r.roi:>4.0f}%"
             for n, r in enumerate(selected, 1)]
-    profiles = [f"{n:>2}  {short_name(r.name):<22} {r.profile}" for n, r in enumerate(selected, 1)]
+    # Profiles match rank numbers to avoid repeating names and exceeding 2000 characters.
+    profiles = [f"{n:>2} {r.profile[:48]}" for n, r in enumerate(selected, 1)]
     message = (
-        f"**MTG {title} BOOSTERS — TOP {len(selected)} VALUE**\n"
+        f"**MTG {title} BOOSTERS - TOP {len(selected)} VALUE**\n"
         f"Cards: {card_date.isoformat()} | Packs: {tcg_date.isoformat()} | USD\n"
         + "```text\n" + columns + "\n" + "-" * len(columns) + "\n" + "\n".join(rows) + "\n```\n"
-        + "**COLORS & CARD TYPES** (from booster card pools)\n"
+        + "**COLORS & CARD TYPES** (same rank numbers)\n"
         + "```text\n" + "\n".join(profiles) + "\n```\n"
-        + "**EV** average card value · **TYP** median · **ROI** EV / pack price\n"
-        + "W/U/B/R/G = white/blue/black/red/green; C = colorless"
+        + "EV = average | TYP = median | ROI = EV / pack\n"
+        + "Colors: W/U/B/R/G = five MTG colors; C = colorless"
     )
-    if len(message) > 4096:
-        raise SourceError("Discord embed description limit exceeded; reduce --top")
+    if len(message) > 2000:
+        raise SourceError("Discord 2000-character content limit exceeded; reduce --top")
     return message
 
 
@@ -480,7 +484,8 @@ def publish_discord(messages: dict[str, str], webhook: str, state_path: Path) ->
 
     for kind in ("play", "collector"):
         content = messages[kind]
-        payload = {"content": "", "embeds": [{"description": content}],
+        # Use visible text, and clear any previously hidden embeds.
+        payload = {"content": content, "embeds": [],
                    "allowed_mentions": {"parse": []}}
         id_value = state.get(kind)
         if id_value:
