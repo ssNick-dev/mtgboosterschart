@@ -584,64 +584,94 @@ def booster_card_profile(config: dict, set_data: dict) -> str:
     suffix = " (partial)" if coverage < .90 else ""
     return f"{label} | {', '.join(focus)}{suffix}"
 
-def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: date, top_n: int) -> dict:
-    """One Discord embed per category: all 15 entries and full card profiles."""
+def compact_profile(profile: str, max_width: int | None = None) -> str:
+    """Keep complete theme names; remove secondary themes instead of cutting words."""
+    rendered = profile.replace(" | ", " — ", 1)
+    if max_width is None or len(rendered) <= max_width:
+        return rendered
+    if " — " in rendered:
+        colors, themes = rendered.split(" — ", 1)
+        parts = [piece.strip() for piece in themes.split(",") if piece.strip()]
+        while len(parts) > 1:
+            parts.pop()
+            candidate = f"{colors} — {', '.join(parts)}"
+            if len(candidate) <= max_width:
+                return candidate
+        if parts and len(f"{colors} — {parts[0]}") <= max_width:
+            return f"{colors} — {parts[0]}"
+        return colors
+    return rendered.split(" (", 1)[0]
+
+
+def format_discord(kind: str, results: list[Result], tcg_date: date,
+                   card_date: date, top_n: int) -> str:
+    """Discord-safe text leaderboard: never relies on optional embeds."""
     title = "PLAY" if kind == "play" else "COLLECTOR"
     by_set: dict[str, Result] = {}
-    for r in results:
-        if r.kind == kind and (r.code not in by_set or r.price < by_set[r.code].price):
-            by_set[r.code] = r
-    selected = sorted(by_set.values(), key=lambda x: (-x.roi, x.name))[:top_n]
+    for result in results:
+        if result.kind == kind and (result.code not in by_set or
+                                    result.price < by_set[result.code].price):
+            by_set[result.code] = result
+    selected = sorted(by_set.values(), key=lambda r: (-r.roi, r.name))[:top_n]
     if len(selected) < 3:
         raise SourceError(f"Only {len(selected)} qualifying {title} packs. Preserving existing Discord posts")
-    fields = []
-    for rank, r in enumerate(selected, 1):
-        profile = r.profile.replace(" | ", " — ", 1)
-        movement = f" {r.movement}" if r.movement else ""
-        name = f"{rank:02d}. {short_name(r.name, max_width=70)}{movement}"
-        value = (
-            f"**Pack** ${r.price:.2f} · **EV** ${r.ev:.2f} · **Median** ${r.median:.2f} · **ROI** {r.roi:.0f}%\n"
-            f"**Net EV** ${r.net_ev:.2f} · **Confidence** {r.confidence}/100 · **Risk** {r.risk}\n"
-            f"**Colors & cards:** {profile}"
-        )
-        if len(name) > 256 or len(value) > 1024:
-            raise SourceError(f"Discord embed field too large for {r.name}")
-        fields.append({"name": name, "value": value, "inline": False})
-    if len(fields) > 25:
-        raise SourceError("Discord allows at most 25 embed fields")
-    embed = {
-        "description": (
-            f"Card prices {card_date.isoformat()} · Pack prices {tcg_date.isoformat()} · USD\n"
-            "**EV** = modeled average · **Net EV** = estimated resale · **ROI** = EV / pack price"
-        ),
-        "color": 0x3B82F6 if kind == "play" else 0xF59E0B,
-        "fields": fields,
-    }
-    total_chars = len(embed["description"]) + sum(
-        len(field["name"]) + len(field["value"]) for field in fields
-    )
-    if total_chars > 6000:
-        raise SourceError(f"{title} leaderboard exceeds Discord embed character limits")
-    return {
-        "content": f"**MTG {title} BOOSTERS — TOP {len(selected)} VALUE**",
-        "embeds": [embed],
-    }
+
+    def render(style: int, width: int | None) -> str:
+        header = f"**MTG {title} BOOSTERS — TOP {len(selected)} VALUE**\n"
+        lines = []
+        for rank, result in enumerate(selected, 1):
+            title_line = f"**{rank:02d}. {short_name(result.name, max_width=28)}**"
+            if result.movement:
+                title_line += f" {result.movement}"
+            profile = compact_profile(result.profile, width)
+            if style == 0:
+                detail = (
+                    f"Pack ${result.price:.2f} | EV ${result.ev:.2f} | "
+                    f"Median ${result.median:.2f} | ROI {result.roi:.0f}%"
+                )
+                additional = (
+                    f"Net ${result.net_ev:.2f} | "
+                    f"Confidence {result.confidence} | Risk {result.risk}"
+                )
+                row = f"{title_line}\n{detail}\n{profile}\n{additional}"
+            elif style == 1:
+                detail = (
+                    f"Pack ${result.price:.2f} | EV ${result.ev:.2f} | "
+                    f"Med ${result.median:.2f} | ROI {result.roi:.0f}%"
+                )
+                additional = (
+                    f"Net ${result.net_ev:.2f} | C{result.confidence} | {result.risk}"
+                )
+                row = f"{title_line}\n{detail}\n{profile}\n{additional}"
+            elif style == 2:
+                detail = (
+                    f"${result.price:.2f} | EV ${result.ev:.2f} | "
+                    f"Med ${result.median:.2f} | {result.roi:.0f}% | Net ${result.net_ev:.2f}"
+                )
+                row = f"{title_line}\n{detail}\n{profile} | C{result.confidence} | {result.risk}"
+            elif style == 3:
+                detail = (
+                    f"${result.price:.2f} | EV ${result.ev:.2f} | "
+                    f"Med ${result.median:.2f} | {result.roi:.0f}% | Net ${result.net_ev:.2f}"
+                )
+                row = f"{title_line}\n{detail}\n{profile}"
+            else:
+                detail = f"${result.price:.2f} | EV ${result.ev:.2f} | ROI {result.roi:.0f}%"
+                row = f"{title_line}\n{detail}\n{profile}"
+            lines.append(row)
+        footer = "\n\nEV = modeled average | Net = estimated resale | C = confidence"
+        return header + "\n\n".join(lines) + footer
+
+    # Prioritize complete descriptions; remove less important labels first.
+    for width in (None, 80, 60, 45, 35, 26):
+        for style in range(5):
+            text = render(style, width)
+            if len(text) <= 2000:
+                return text
+    raise SourceError("Unable to fit all ranked boosters in one Discord message")
 
 
-def discord_preview(message: str | dict) -> str:
-    """Readable full-length local preview without Discord webhook limits."""
-    if isinstance(message, str):
-        return message
-    lines = [message["content"]]
-    for embed in message.get("embeds", []):
-        if embed.get("description"):
-            lines.append(embed["description"])
-        for field in embed.get("fields", []):
-            lines.append(f"{field['name']}\n{field['value']}")
-    return "\n\n".join(lines)
-
-
-def publish_discord(messages: dict[str, str | dict], webhook: str, state_path: Path) -> None:
+def publish_discord(messages: dict[str, str], webhook: str, state_path: Path) -> None:
     if not re.match(r"^https://(?:discord(?:app)?\.com)/api/webhooks/\d+/[A-Za-z0-9_\-]+/?$", webhook):
         raise SourceError("Invalid Discord webhook URL")
     state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
@@ -665,10 +695,8 @@ def publish_discord(messages: dict[str, str | dict], webhook: str, state_path: P
 
     for kind in ("play", "collector", "status"):
         content = messages[kind]
-        # Ranked posts use embeds; status remains plain text. Existing IDs are edited.
-        payload = (dict(content) if isinstance(content, dict)
-                   else {"content": content, "embeds": []})
-        payload["allowed_mentions"] = {"parse": []}
+        # Explicitly clear old embeds; message text always contains the full rankings.
+        payload = {"content": content, "embeds": [], "allowed_mentions": {"parse": []}}
         id_value = state.get(kind)
         if id_value:
             response = send("PATCH", f"{webhook.rstrip('/')}/messages/{id_value}", payload)
@@ -780,9 +808,7 @@ def run(args) -> None:
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
     for kind, content in messages.items():
-        (output / f"{kind}.txt").write_text(discord_preview(content) + "\n", encoding="utf-8")
-        if isinstance(content, dict):
-            (output / f"{kind}.json").write_text(json.dumps(content, indent=2) + "\n", encoding="utf-8")
+        (output / f"{kind}.txt").write_text(content + "\n", encoding="utf-8")
     (output / "data.json").write_text(json.dumps([x.__dict__ for x in results], indent=2) + "\n", encoding="utf-8")
     (output / "booster_audit.json").write_text(json.dumps(audit_findings, indent=2) + "\n", encoding="utf-8")
     LOG.info("Saved ranked previews to %s", output)
@@ -796,7 +822,7 @@ def run(args) -> None:
     history.setdefault("daily", {})[today.isoformat()] = snapshot
     history["daily"] = dict(sorted(history["daily"].items())[-365:])
     if args.dry_run:
-        print("\n\n".join(discord_preview(messages[kind]) for kind in ("play", "collector", "status")))
+        print("\n\n".join(messages[kind] for kind in ("play", "collector", "status")))
     else:
         webhook = os.environ.get("DISCORD_WEBHOOK_URL", "")
         if not webhook:
