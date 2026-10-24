@@ -71,8 +71,8 @@ class SourceTests(unittest.TestCase):
         results = [Result("Test Set " + str(i), str(i), "play", 4 + i, 3 + i, 2 + i, 80, 1, "2026-10-24", i)
                    for i in range(8)]
         text = format_discord("play", results, date(2026, 10, 24), date(2026, 10, 24), 8)
-        self.assertTrue(text.count("```text") == 1)
-        self.assertLessEqual(len(text), 2000)
+        self.assertEqual(text.count("```text"), 2)
+        self.assertLessEqual(len(text), 4096)
         self.assertEqual(len([x for x in text.splitlines() if x.strip().startswith("80%")]), 0)
 
     def test_date_parse(self):
@@ -81,3 +81,20 @@ class SourceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_profiles_and_top15(self):
+        from tracker import booster_card_profile
+        values = [Result(f"Set {i}", str(i), "play", 5, 5, 3, 100 - i, 1,
+                         "2026-10-24", i, "WUBRG | Dragons, Artifacts") for i in range(19)]
+        message = format_discord("play", values, date(2026, 10, 24), date(2026, 10, 24), 15)
+        self.assertIn("TOP 15", message)
+        self.assertEqual(message.count("WUBRG | Dragons"), 15)
+        self.assertNotIn("Before fees", message)
+        self.assertNotIn("Sources:", message)
+        self.assertLessEqual(len(message), 4096)
+        records = [{"uuid": str(i), "name": f"Card {i}", "colors": [["W"], ["U"], ["B"], ["R"], ["G"]][i % 5],
+                    "types": ["Creature"], "subtypes": ["Dragon"]} for i in range(15)]
+        config = {"sheets": {"creatures": {"cards": {str(i): 1 for i in range(15)}}}}
+        profile = booster_card_profile(config, {"cards": records})
+        self.assertIn("WUBRG", profile)
+        self.assertIn("Dragon", profile)
