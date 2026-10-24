@@ -60,6 +60,10 @@ class Result:
     card_price_day: str
     source_product_id: int
     profile: str = "Card profile unavailable"
+    net_ev: float = 0.0
+    confidence: int = 0
+    risk: str = "Unknown"
+    movement: str = ""
 
 
 class SourceError(RuntimeError):
@@ -342,6 +346,66 @@ def evaluate_booster(config: dict, prices: dict, samples: int = 6000, seed: int 
     return ev_total, statistics.median(simulated), coverage, max(source_dates) if source_dates else "unknown"
 
 
+
+def net_price(price: float, fee: float = 0.13, minimum: float = 1.0) -> float:
+    """Conservative resale proxy; not a buylist quote or guaranteed proceeds."""
+    return max(0.0, price * (1 - fee)) if price >= minimum else 0.0
+
+
+def model_net_ev(config: dict, prices: dict) -> float:
+    variants = config.get("boosters") or []
+    sheets = config.get("sheets") or {}
+    total = sum(positive(v.get("weight")) or 0 for v in variants)
+    if not total:
+        raise SourceError("Invalid booster variant weights")
+    value = 0.0
+    for variant in variants:
+        chance = (positive(variant.get("weight")) or 0) / total
+        for name, count in (variant.get("contents") or {}).items():
+            sheet = sheets.get(name)
+            if not sheet:
+                raise SourceError("Unknown booster sheet")
+            cards = sheet.get("cards") or {}
+            weights = [(positive(w) or 0, price_for_uuid(prices, uid, bool(sheet.get("foil")))[0] or 0)
+                       for uid, w in cards.items()]
+            denominator = sum(w for w, _ in weights)
+            if not denominator:
+                raise SourceError("Empty booster sheet")
+            value += chance * int(count) * sum(w * net_price(p) for w, p in weights) / denominator
+    return value
+
+
+def risk_label(ev: float, median: float) -> str:
+    ratio = median / ev if ev > 0 else 0
+    return "High" if ratio < 0.5 else "Medium" if ratio < 0.8 else "Low"
+
+
+def confidence_score(coverage: float, price_day: str, today: date, profile: str) -> int:
+    parsed = parse_date_from_text(price_day)
+    age = max(0, (today - parsed).days) if parsed else 5
+    penalty = 12 if any(x in profile.lower() for x in ("partial", "limited", "unavailable")) else 0
+    return max(0, min(100, round(coverage * 80 + 20 - age * 3 - penalty)))
+
+
+def price_anomaly(price: float, previous: float | None = None) -> bool:
+    return price < 0.50 or price > 5000 or bool(previous and (price < previous * .4 or price > previous * 2.5))
+
+
+def movement_arrow(current: int, previous: int | None) -> str:
+    if previous is None:
+        return "NEW"
+    difference = previous - current
+    return f"▲{difference}" if difference > 0 else f"▼{-difference}" if difference < 0 else "—"
+
+
+def load_history(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
 def parse_date_from_text(text: str) -> date | None:
     match = re.search(r"(20\d{2})-(\d\d)-(\d\d)", text)
     if match:
@@ -490,7 +554,7 @@ def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: 
             rows.append(
                 f"**{n:02d}. {short_name(r.name, max_width=40)}**\n"
                 f"Pack ${r.price:.2f} | EV ${r.ev:.2f} | Median ${r.median:.2f} | ROI {r.roi:.0f}%\n"
-                f"{profile}"
+                f"{profile} | NetEV ${r.net_ev:.2f} | C{r.confidence} | Risk {r.risk}"
             )
         return header + "\n\n".join(rows) + "\n\nEV = modeled average | ROI = EV / pack price"
 
@@ -575,6 +639,9 @@ def run(args) -> None:
         # The data file may use a timestamp-shaped metadata object; if not, fail rather than claim freshness.
         raise SourceError("MTGJSON current-price file doesn't include a parseable snapshot date")
     fresh_or_fail("MTGJSON", card_date, today)
+    history_path = Path("state/price_history.json")
+    history = load_history(history_path)
+    previous = history.get("latest", {})
     results: list[Result] = []
     loaded: dict[str, dict] = {}
     profiles_cache: dict[tuple[str, str], str] = {}
@@ -604,10 +671,22 @@ def run(args) -> None:
         profile_key = (item.booster_set, item.booster_code)
         if profile_key not in profiles_cache:
             profiles_cache[profile_key] = booster_card_profile(config, loaded[item.booster_set])
+        previous_price = positive(previous.get(f"{item.kind}:{item.code}", {}).get("price"))
+        if price_anomaly(cost, previous_price):
+            LOG.warning("Flagged anomalous pack price for %s: $%.2f", item.name, cost)
+            continue
+        profile = profiles_cache[profile_key]
         results.append(Result(item.name, item.code, item.kind, cost, ev, typical,
-                              ev / cost * 100, cov, price_day, item.product_id,
-                              profiles_cache[profile_key]))
+                              ev / cost * 100, cov, price_day, item.product_id, profile,
+                              model_net_ev(config, prices),
+                              confidence_score(cov, price_day, today, profile),
+                              risk_label(ev, typical)))
         LOG.info("Qualified %-27s %-9s price $%.2f EV $%.2f ROI %.1f%%", item.name[:27], item.kind, cost, ev, ev / cost * 100)
+    for kind in ("play", "collector"):
+        ranks = history.get("ranks", {}).get(kind, {})
+        ordered = sorted((r for r in results if r.kind == kind), key=lambda r: (-r.roi, r.name))
+        for rank, row in enumerate(ordered, 1):
+            row.movement = movement_arrow(rank, ranks.get(row.code))
     messages = {kind: format_discord(kind, results, tcg_date, card_date, args.top) for kind in ("play", "collector")}
     play_count = len({r.code for r in results if r.kind == "play"})
     collector_count = len({r.code for r in results if r.kind == "collector"})
@@ -625,6 +704,15 @@ def run(args) -> None:
         (output / f"{kind}.txt").write_text(content + "\n", encoding="utf-8")
     (output / "data.json").write_text(json.dumps([x.__dict__ for x in results], indent=2) + "\n", encoding="utf-8")
     LOG.info("Saved ranked previews to %s", output)
+    snapshot = {f"{r.kind}:{r.code}": {"price": r.price, "ev": r.ev,
+                "net_ev": r.net_ev, "confidence": r.confidence,
+                "risk": r.risk, "roi": r.roi} for r in results}
+    history["latest"] = snapshot
+    history["ranks"] = {kind: {r.code: rank for rank, r in enumerate(
+        sorted((x for x in results if x.kind == kind), key=lambda x: (-x.roi, x.name)), 1)}
+        for kind in ("play", "collector")}
+    history.setdefault("daily", {})[today.isoformat()] = snapshot
+    history["daily"] = dict(sorted(history["daily"].items())[-365:])
     if args.dry_run:
         print("\n\n".join(messages[kind] for kind in ("play", "collector", "status")))
     else:
@@ -632,6 +720,8 @@ def run(args) -> None:
         if not webhook:
             raise SourceError("Set DISCORD_WEBHOOK_URL repository secret before publishing")
         publish_discord(messages, webhook, Path(args.state))
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        history_path.write_text(json.dumps(history, indent=2) + "\\n", encoding="utf-8")
 
 
 def main():
