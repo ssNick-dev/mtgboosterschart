@@ -552,15 +552,15 @@ def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: 
             if len(profile) > profile_width:
                 profile = profile[:profile_width - 1].rstrip(" ,") + "…"
             rows.append(
-                f"**{n:02d}. {short_name(r.name, max_width=40)}**\n"
+                f"**{n:02d}. {short_name(r.name, max_width=30)}** {r.movement}\n"
                 f"Pack ${r.price:.2f} | EV ${r.ev:.2f} | Median ${r.median:.2f} | ROI {r.roi:.0f}%\n"
-                f"{profile} | NetEV ${r.net_ev:.2f} | C{r.confidence} | Risk {r.risk}"
+                f"{profile}\nNet ${r.net_ev:.2f} | Confidence {r.confidence} | Risk {r.risk}"
             )
         return header + "\n\n".join(rows) + "\n\nEV = modeled average | ROI = EV / pack price"
 
     # One Discord message per booster category. Preserve 15 complete entries
     # and fit under the standard 2000-character content limit.
-    for width in (60, 50, 42, 34, 26, 18, 12):
+    for width in (40, 30, 24, 18, 12, 8):
         for dates in (True, False):
             message = render(width, dates)
             if len(message) <= 2000:
@@ -721,7 +721,7 @@ def run(args) -> None:
             raise SourceError("Set DISCORD_WEBHOOK_URL repository secret before publishing")
         publish_discord(messages, webhook, Path(args.state))
         history_path.parent.mkdir(parents=True, exist_ok=True)
-        history_path.write_text(json.dumps(history, indent=2) + "\\n", encoding="utf-8")
+        history_path.write_text(json.dumps(history, indent=2) + "\n", encoding="utf-8")
 
 
 def main():
