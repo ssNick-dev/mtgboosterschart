@@ -468,7 +468,7 @@ def booster_card_profile(config: dict, set_data: dict) -> str:
     return f"{label} | {', '.join(focus)}{suffix}"[:48]
 
 def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: date, top_n: int) -> str:
-    """Show rank-matched set names and card profiles without overflowing Discord."""
+    """Mobile-first ranked cards: no wide tables or columns to wrap."""
     title = "PLAY" if kind == "play" else "COLLECTOR"
     by_set: dict[str, Result] = {}
     for r in results:
@@ -478,47 +478,30 @@ def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: 
     if len(selected) < 3:
         raise SourceError(f"Only {len(selected)} qualifying {title} packs. Preserving existing Discord posts")
 
-    columns = f"{'#':>2} {'SET':<20} {'PACK':>7} {'EV':>7} {'TYP':>7} {'ROI':>5}"
+    def render(profile_width: int, include_dates: bool) -> str:
+        header = f"**MTG {title} BOOSTERS - TOP {len(selected)} VALUE**\n"
+        if include_dates:
+            header += f"Cards: {card_date.isoformat()} | Packs: {tcg_date.isoformat()} | USD\n"
+        rows = []
+        for n, r in enumerate(selected, 1):
+            profile = r.profile.replace(" | ", " — ", 1)
+            if len(profile) > profile_width:
+                profile = profile[:profile_width - 1].rstrip(" ,") + "…"
+            rows.append(
+                f"**{n:02d}. {short_name(r.name, max_width=40)}**\n"
+                f"Pack ${r.price:.2f} | EV ${r.ev:.2f} | Median ${r.median:.2f} | ROI {r.roi:.0f}%\n"
+                f"{profile}"
+            )
+        return header + "\n\n".join(rows) + "\n\nEV = modeled average | ROI = EV / pack price"
 
-    def dollars(x: float) -> str:
-        return ("$" + f"{x:.2f}").rjust(7)
-
-    rows = [
-        f"{n:>2} {short_name(r.name, max_width=20):<20} "
-        f"{dollars(r.price)} {dollars(r.ev)} {dollars(r.median)} {r.roi:>4.0f}%"
-        for n, r in enumerate(selected, 1)
-    ]
-
-    def compact_profile(profile: str, width: int) -> str:
-        if len(profile) <= width:
-            return profile
-        # Prefer dropping the trailing category rather than cutting words mid-label.
-        parts = profile.rsplit(", ", 1)
-        if len(parts) > 1 and len(parts[0]) <= width:
-            return parts[0]
-        return profile[:width - 1].rstrip() + "…"
-
-    def render(profile_width: int) -> str:
-        profiles = [
-            f"{n:>2} {short_name(r.name, max_width=18):<18} {compact_profile(r.profile, profile_width)}"
-            for n, r in enumerate(selected, 1)
-        ]
-        return (
-            f"**MTG {title} BOOSTERS - TOP {len(selected)} VALUE**\n"
-            f"Cards: {card_date.isoformat()} | Packs: {tcg_date.isoformat()} | USD\n"
-            + "```text\n" + columns + "\n" + "-" * len(columns) + "\n" + "\n".join(rows) + "\n```\n"
-            + "**COLORS & CARD TYPES**\n"
-            + "```text\n" + "\n".join(profiles) + "\n```\n"
-            + "EV = average | TYP = median | ROI = EV / pack\n"
-            + "Colors: W/U/B/R/G = MTG colors; C = colorless"
-        )
-
-    # Keep all 15 named sets, shortening descriptions only if necessary.
-    for profile_width in (48, 44, 40, 36, 32, 28, 24, 20, 16, 12):
-        message = render(profile_width)
-        if len(message) <= 2000:
-            return message
-    raise SourceError("Discord 2000-character limit exceeded even with compact set profiles")
+    # One Discord message per booster category. Preserve 15 complete entries
+    # and fit under the standard 2000-character content limit.
+    for width in (60, 50, 42, 34, 26, 18, 12):
+        for dates in (True, False):
+            message = render(width, dates)
+            if len(message) <= 2000:
+                return message
+    raise SourceError("Top 15 mobile cards exceed Discord's message length limit")
 
 
 def publish_discord(messages: dict[str, str], webhook: str, state_path: Path) -> None:
