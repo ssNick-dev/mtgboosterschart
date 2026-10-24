@@ -624,7 +624,8 @@ def format_discord(kind: str, results: list[Result], tcg_date: date,
             # Unchanged positions do not need a dangling dash.
             movement = result.movement.strip()
             prefix = f"{movement} " if movement and movement != "—" else ""
-            title_line = f"**{rank:02d}. {prefix}{short_name(result.name, max_width=28)}**"
+            # Avoid numeric-dot prefixes that Discord can render as Markdown lists.
+            title_line = f"**#{rank:02d} {prefix}{short_name(result.name, max_width=28)}**"
             profile = compact_profile(result.profile, width)
             if style == 0:
                 detail = (
