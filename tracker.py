@@ -551,11 +551,18 @@ def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: 
             profile = r.profile.replace(" | ", " — ", 1)
             if len(profile) > profile_width:
                 profile = profile[:profile_width - 1].rstrip(" ,") + "…"
-            rows.append(
-                f"**{n:02d}. {short_name(r.name, max_width=30)}** {r.movement}\n"
-                f"Pack ${r.price:.2f} | EV ${r.ev:.2f} | Median ${r.median:.2f} | ROI {r.roi:.0f}%\n"
-                f"{profile}\nNet ${r.net_ev:.2f} | Confidence {r.confidence} | Risk {r.risk}"
-            )
+            if compact:
+                rows.append(
+                    f"**{n:02d}. {short_name(r.name, max_width=24)}** {r.movement}\n"
+                    f"${r.price:.2f} EV${r.ev:.2f} Med${r.median:.2f} ROI{r.roi:.0f}% "
+                    f"Net${r.net_ev:.2f} C{r.confidence} {r.risk}\n{profile}"
+                )
+            else:
+                rows.append(
+                    f"**{n:02d}. {short_name(r.name, max_width=30)}** {r.movement}\n"
+                    f"Pack ${r.price:.2f} | EV ${r.ev:.2f} | Median ${r.median:.2f} | ROI {r.roi:.0f}%\n"
+                    f"{profile}\nNet ${r.net_ev:.2f} | Confidence {r.confidence} | Risk {r.risk}"
+                )
         return header + "\n\n".join(rows) + "\n\nEV = modeled average | ROI = EV / pack price"
 
     # One Discord message per booster category. Preserve 15 complete entries
@@ -565,6 +572,10 @@ def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: 
             message = render(width, dates)
             if len(message) <= 2000:
                 return message
+    for width in (32, 22, 12, 8):
+        message = render(width, False, compact=True)
+        if len(message) <= 2000:
+            return message
     raise SourceError("Top 15 mobile cards exceed Discord's message length limit")
 
 
