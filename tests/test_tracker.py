@@ -79,8 +79,6 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(parse_date_from_text("2026-10-24T03:20:00Z"), date(2026, 10, 24))
 
 
-if __name__ == "__main__":
-    unittest.main()
 
     def test_profiles_and_top15(self):
         from tracker import booster_card_profile
@@ -98,3 +96,7 @@ if __name__ == "__main__":
         profile = booster_card_profile(config, {"cards": records})
         self.assertIn("WUBRG", profile)
         self.assertIn("Dragon", profile)
+
+
+if __name__ == "__main__":
+    unittest.main()
