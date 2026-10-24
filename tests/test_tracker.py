@@ -11,6 +11,12 @@ from tracker import (
     parse_date_from_text,
     price_for_uuid,
     select_candidates,
+    model_net_ev,
+    net_price,
+    confidence_score,
+    risk_label,
+    movement_arrow,
+    price_anomaly,
 )
 
 
@@ -74,6 +80,26 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(text.count("```text"), 0)
         self.assertLessEqual(len(text), 2000)
         self.assertIn("Pack $4.00 | EV $3.00 | Median $2.00 | ROI 80%", text)
+
+
+    def test_new_metrics(self):
+        self.assertEqual(net_price(0.50), 0.0)
+        self.assertAlmostEqual(net_price(10), 8.7)
+        self.assertEqual(risk_label(10, 2), "High")
+        self.assertEqual(risk_label(10, 9), "Low")
+        self.assertEqual(movement_arrow(2, 5), "▲3")
+        self.assertEqual(movement_arrow(5, 2), "▼3")
+        self.assertEqual(movement_arrow(2, None), "NEW")
+        self.assertTrue(price_anomaly(1, 5))
+        self.assertFalse(price_anomaly(4, 5))
+        self.assertLess(confidence_score(.97, "2026-10-20", date(2026, 10, 24),
+                                         "profile limited"),
+                        confidence_score(1, "2026-10-24", date(2026, 10, 24),
+                                         "All 5 | Dragons"))
+        config = {"boosters": [{"weight": 1, "contents": {"common": 4}}],
+                  "sheets": {"common": {"cards": {"a": 1, "b": 1, "c": 1, "d": 1}}}}
+        prices = {uid: paper(normal=2) for uid in "abcd"}
+        self.assertAlmostEqual(model_net_ev(config, prices), 6.96)
 
     def test_date_parse(self):
         self.assertEqual(parse_date_from_text("2026-10-24T03:20:00Z"), date(2026, 10, 24))
