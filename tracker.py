@@ -582,10 +582,10 @@ def booster_card_profile(config: dict, set_data: dict) -> str:
     if not focus:
         focus = ["Mixed spells/creatures"]
     suffix = " (partial)" if coverage < .90 else ""
-    return f"{label} | {', '.join(focus)}{suffix}"[:48]
+    return f"{label} | {', '.join(focus)}{suffix}"
 
-def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: date, top_n: int) -> str:
-    """Mobile-first ranked cards: no wide tables or columns to wrap."""
+def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: date, top_n: int) -> dict:
+    """One Discord embed per category: all 15 entries and full card profiles."""
     title = "PLAY" if kind == "play" else "COLLECTOR"
     by_set: dict[str, Result] = {}
     for r in results:
@@ -594,45 +594,54 @@ def format_discord(kind: str, results: list[Result], tcg_date: date, card_date: 
     selected = sorted(by_set.values(), key=lambda x: (-x.roi, x.name))[:top_n]
     if len(selected) < 3:
         raise SourceError(f"Only {len(selected)} qualifying {title} packs. Preserving existing Discord posts")
-
-    def render(profile_width: int, include_dates: bool, compact: bool = False) -> str:
-        header = f"**MTG {title} BOOSTERS - TOP {len(selected)} VALUE**\n"
-        if include_dates:
-            header += f"Cards: {card_date.isoformat()} | Packs: {tcg_date.isoformat()} | USD\n"
-        rows = []
-        for n, r in enumerate(selected, 1):
-            profile = r.profile.replace(" | ", " — ", 1)
-            if len(profile) > profile_width:
-                profile = profile[:profile_width - 1].rstrip(" ,") + "…"
-            if compact:
-                rows.append(
-                    f"**{n:02d}. {short_name(r.name, max_width=24)}** {r.movement}\n"
-                    f"${r.price:.2f} EV${r.ev:.2f} Med${r.median:.2f} ROI{r.roi:.0f}% "
-                    f"Net${r.net_ev:.2f} C{r.confidence} {r.risk}\n{profile}"
-                )
-            else:
-                rows.append(
-                    f"**{n:02d}. {short_name(r.name, max_width=30)}** {r.movement}\n"
-                    f"Pack ${r.price:.2f} | EV ${r.ev:.2f} | Median ${r.median:.2f} | ROI {r.roi:.0f}%\n"
-                    f"{profile}\nNet ${r.net_ev:.2f} | Confidence {r.confidence} | Risk {r.risk}"
-                )
-        return header + "\n\n".join(rows) + "\n\nEV = modeled average | ROI = EV / pack price"
-
-    # One Discord message per booster category. Preserve 15 complete entries
-    # and fit under the standard 2000-character content limit.
-    for width in (40, 30, 24, 18, 12, 8):
-        for dates in (True, False):
-            message = render(width, dates)
-            if len(message) <= 2000:
-                return message
-    for width in (32, 22, 12, 8):
-        message = render(width, False, compact=True)
-        if len(message) <= 2000:
-            return message
-    raise SourceError("Top 15 mobile cards exceed Discord's message length limit")
+    fields = []
+    for rank, r in enumerate(selected, 1):
+        profile = r.profile.replace(" | ", " — ", 1)
+        movement = f" {r.movement}" if r.movement else ""
+        name = f"{rank:02d}. {short_name(r.name, max_width=70)}{movement}"
+        value = (
+            f"**Pack** ${r.price:.2f} · **EV** ${r.ev:.2f} · **Median** ${r.median:.2f} · **ROI** {r.roi:.0f}%\n"
+            f"**Net EV** ${r.net_ev:.2f} · **Confidence** {r.confidence}/100 · **Risk** {r.risk}\n"
+            f"**Colors & cards:** {profile}"
+        )
+        if len(name) > 256 or len(value) > 1024:
+            raise SourceError(f"Discord embed field too large for {r.name}")
+        fields.append({"name": name, "value": value, "inline": False})
+    if len(fields) > 25:
+        raise SourceError("Discord allows at most 25 embed fields")
+    embed = {
+        "description": (
+            f"Card prices {card_date.isoformat()} · Pack prices {tcg_date.isoformat()} · USD\n"
+            "**EV** = modeled average · **Net EV** = estimated resale · **ROI** = EV / pack price"
+        ),
+        "color": 0x3B82F6 if kind == "play" else 0xF59E0B,
+        "fields": fields,
+    }
+    total_chars = len(embed["description"]) + sum(
+        len(field["name"]) + len(field["value"]) for field in fields
+    )
+    if total_chars > 6000:
+        raise SourceError(f"{title} leaderboard exceeds Discord embed character limits")
+    return {
+        "content": f"**MTG {title} BOOSTERS — TOP {len(selected)} VALUE**",
+        "embeds": [embed],
+    }
 
 
-def publish_discord(messages: dict[str, str], webhook: str, state_path: Path) -> None:
+def discord_preview(message: str | dict) -> str:
+    """Readable full-length local preview without Discord webhook limits."""
+    if isinstance(message, str):
+        return message
+    lines = [message["content"]]
+    for embed in message.get("embeds", []):
+        if embed.get("description"):
+            lines.append(embed["description"])
+        for field in embed.get("fields", []):
+            lines.append(f"{field['name']}\n{field['value']}")
+    return "\n\n".join(lines)
+
+
+def publish_discord(messages: dict[str, str | dict], webhook: str, state_path: Path) -> None:
     if not re.match(r"^https://(?:discord(?:app)?\.com)/api/webhooks/\d+/[A-Za-z0-9_\-]+/?$", webhook):
         raise SourceError("Invalid Discord webhook URL")
     state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
@@ -656,9 +665,10 @@ def publish_discord(messages: dict[str, str], webhook: str, state_path: Path) ->
 
     for kind in ("play", "collector", "status"):
         content = messages[kind]
-        # Use visible text, and clear any previously hidden embeds.
-        payload = {"content": content, "embeds": [],
-                   "allowed_mentions": {"parse": []}}
+        # Ranked posts use embeds; status remains plain text. Existing IDs are edited.
+        payload = (dict(content) if isinstance(content, dict)
+                   else {"content": content, "embeds": []})
+        payload["allowed_mentions"] = {"parse": []}
         id_value = state.get(kind)
         if id_value:
             response = send("PATCH", f"{webhook.rstrip('/')}/messages/{id_value}", payload)
@@ -770,7 +780,9 @@ def run(args) -> None:
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
     for kind, content in messages.items():
-        (output / f"{kind}.txt").write_text(content + "\n", encoding="utf-8")
+        (output / f"{kind}.txt").write_text(discord_preview(content) + "\n", encoding="utf-8")
+        if isinstance(content, dict):
+            (output / f"{kind}.json").write_text(json.dumps(content, indent=2) + "\n", encoding="utf-8")
     (output / "data.json").write_text(json.dumps([x.__dict__ for x in results], indent=2) + "\n", encoding="utf-8")
     (output / "booster_audit.json").write_text(json.dumps(audit_findings, indent=2) + "\n", encoding="utf-8")
     LOG.info("Saved ranked previews to %s", output)
@@ -784,7 +796,7 @@ def run(args) -> None:
     history.setdefault("daily", {})[today.isoformat()] = snapshot
     history["daily"] = dict(sorted(history["daily"].items())[-365:])
     if args.dry_run:
-        print("\n\n".join(messages[kind] for kind in ("play", "collector", "status")))
+        print("\n\n".join(discord_preview(messages[kind]) for kind in ("play", "collector", "status")))
     else:
         webhook = os.environ.get("DISCORD_WEBHOOK_URL", "")
         if not webhook:
