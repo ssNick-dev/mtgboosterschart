@@ -1,82 +1,82 @@
 {
   "latest": {
     "collector:BLB": {
-      "price": 129.87,
+      "price": 129.13,
       "ev": 43.66207,
       "net_ev": 34.120072110797224,
-      "confidence": 85,
+      "confidence": 82,
       "risk": "Medium",
-      "roi": 33.61982751982752
+      "roi": 33.812491287849454
     },
     "play:BLB": {
-      "price": 8.84,
+      "price": 8.74,
       "ev": 8.013559077601414,
       "net_ev": 3.8775884049999996,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
-      "roi": 90.65112078734631
+      "roi": 91.68831896569122
     },
     "collector:DFT": {
-      "price": 27.68,
+      "price": 27.49,
       "ev": 14.967676666666666,
       "net_ev": 9.991959343144208,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
-      "roi": 54.073976396917146
+      "roi": 54.44771432035892
     },
     "play:DFT": {
-      "price": 4.22,
+      "price": 4.17,
       "ev": 5.393541310890651,
       "net_ev": 1.9879600353425924,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
-      "roi": 127.809035803096
+      "roi": 129.3415182467782
     },
     "collector:DSK": {
       "price": 78.75,
       "ev": 30.137658333333334,
       "net_ev": 23.491782167480796,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
       "roi": 38.27004232804233
     },
     "play:DSK": {
-      "price": 6.98,
+      "price": 6.89,
       "ev": 7.222113333333334,
       "net_ev": 3.7740998665090237,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
-      "roi": 103.46867239732569
+      "roi": 104.82022254475085
     },
     "collector:ECL": {
       "price": 39.94,
       "ev": 18.490653333333334,
       "net_ev": 12.790564499663951,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
       "roi": 46.2960774495076
     },
     "play:ECL": {
-      "price": 4.94,
+      "price": 4.98,
       "ev": 5.150053621896154,
       "net_ev": 2.2556877523016765,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
-      "roi": 104.25209760923389
+      "roi": 103.41473136337657
     },
     "collector:EOE": {
-      "price": 78.54,
+      "price": 78.42,
       "ev": 43.25125347118273,
       "net_ev": 34.786280698603235,
-      "confidence": 85,
+      "confidence": 82,
       "risk": "Medium",
-      "roi": 55.06907750341574
+      "roi": 55.15334541084255
     },
     "play:EOE": {
       "price": 8.44,
       "ev": 8.213682786321113,
       "net_ev": 4.749549454152574,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
       "roi": 97.31851642560562
     },
@@ -84,7 +84,7 @@
       "price": 91.34,
       "ev": 44.944716666666665,
       "net_ev": 34.525802206227006,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
       "roi": 49.205952120283186
     },
@@ -92,7 +92,7 @@
       "price": 6.64,
       "ev": 7.271613827783891,
       "net_ev": 3.527863225007574,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
       "roi": 109.51225644252848
     },
@@ -100,55 +100,55 @@
       "price": 162.34,
       "ev": 79.97580166666667,
       "net_ev": 67.8392388858265,
-      "confidence": 85,
+      "confidence": 82,
       "risk": "Medium",
       "roi": 49.26438441953103
     },
     "play:FIN": {
-      "price": 9.7,
+      "price": 9.68,
       "ev": 8.86258,
       "net_ev": 5.190842020380524,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
-      "roi": 91.36680412371135
+      "roi": 91.55557851239669
     },
     "collector:HOB": {
-      "price": 54.24,
+      "price": 53.7,
       "ev": 41.557541666666665,
       "net_ev": 32.29983436580984,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
-      "roi": 76.61788655358899
+      "roi": 77.38834574798261
     },
     "play:HOB": {
-      "price": 4.57,
+      "price": 4.65,
       "ev": 4.332233333333334,
       "net_ev": 1.6467812500066932,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
-      "roi": 94.79722830051058
+      "roi": 93.1663082437276
     },
     "collector:INR": {
       "price": 53.81,
       "ev": 27.694086666666667,
       "net_ev": 20.88636048977347,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
       "roi": 51.46643127051973
     },
     "play:INR": {
-      "price": 11.05,
+      "price": 11.01,
       "ev": 8.479535,
       "net_ev": 4.352495991549419,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
-      "roi": 76.73787330316742
+      "roi": 77.01666666666667
     },
     "collector:MH3": {
       "price": 89.48,
       "ev": 55.688465,
       "net_ev": 43.9186503722522,
-      "confidence": 84,
+      "confidence": 81,
       "risk": "Low",
       "roi": 62.23565601251676
     },
@@ -156,7 +156,7 @@
       "price": 11.01,
       "ev": 12.750424469641015,
       "net_ev": 8.430752136576249,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
       "roi": 115.80767002398741
     },
@@ -164,39 +164,39 @@
       "price": 38.42,
       "ev": 25.092890228278947,
       "net_ev": 18.993605932636296,
-      "confidence": 96,
+      "confidence": 93,
       "risk": "Medium",
       "roi": 65.31205160926326
     },
     "play:MKM": {
-      "price": 5.05,
+      "price": 5.08,
       "ev": 6.695788333333334,
       "net_ev": 3.6730979262578063,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
-      "roi": 132.58986798679868
+      "roi": 131.8068569553806
     },
     "collector:MSH": {
-      "price": 41.5,
+      "price": 41.48,
       "ev": 31.88389317727833,
       "net_ev": 24.569947969959216,
-      "confidence": 85,
+      "confidence": 82,
       "risk": "Medium",
-      "roi": 76.828658258502
+      "roi": 76.86570197029492
     },
     "play:MSH": {
-      "price": 4.6,
+      "price": 4.72,
       "ev": 4.610235,
       "net_ev": 1.8683815363004375,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
-      "roi": 100.22250000000001
+      "roi": 97.67447033898307
     },
     "collector:OTJ": {
       "price": 47.12,
       "ev": 27.195286597275445,
       "net_ev": 20.66788062417191,
-      "confidence": 85,
+      "confidence": 82,
       "risk": "Medium",
       "roi": 57.714954578258585
     },
@@ -204,7 +204,7 @@
       "price": 6.79,
       "ev": 7.863258085530444,
       "net_ev": 4.454186889214592,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
       "roi": 115.80645192239241
     },
@@ -212,7 +212,7 @@
       "price": 183.53,
       "ev": 84.69692263169219,
       "net_ev": 71.95828068289894,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Low",
       "roi": 46.14881634157478
     },
@@ -220,23 +220,23 @@
       "price": 108.12,
       "ev": 49.61671833333333,
       "net_ev": 39.71889327357406,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Low",
       "roi": 45.89041651251695
     },
     "collector:SOS": {
-      "price": 47.43,
+      "price": 47.45,
       "ev": 30.4223148730082,
       "net_ev": 22.727474727500734,
-      "confidence": 85,
+      "confidence": 82,
       "risk": "Medium",
-      "roi": 64.14150300022813
+      "roi": 64.11446759327333
     },
     "play:SOS": {
       "price": 5.5,
       "ev": 5.383090175812054,
       "net_ev": 2.1418416122900426,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
       "roi": 97.87436683294644
     },
@@ -244,39 +244,39 @@
       "price": 48.99,
       "ev": 23.934325,
       "net_ev": 18.296958719051094,
-      "confidence": 85,
+      "confidence": 82,
       "risk": "Medium",
       "roi": 48.85553174117167
     },
     "play:SPM": {
-      "price": 5.08,
+      "price": 5.06,
       "ev": 5.168386146228986,
       "net_ev": 2.0376634703717422,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
-      "roi": 101.73988476828713
+      "roi": 102.1420187001776
     },
     "collector:TDM": {
-      "price": 50.16,
+      "price": 50.21,
       "ev": 35.29452666666667,
       "net_ev": 26.607658610596292,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
-      "roi": 70.36388888888891
+      "roi": 70.29381929230566
     },
     "play:TDM": {
-      "price": 7.43,
+      "price": 7.47,
       "ev": 6.4225492457817115,
       "net_ev": 3.1377158424267244,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
-      "roi": 86.44077046812532
+      "roi": 85.97790154995599
     },
     "collector:TLA": {
       "price": 53.44,
       "ev": 36.993883648196075,
       "net_ev": 28.875819916416056,
-      "confidence": 85,
+      "confidence": 82,
       "risk": "Medium",
       "roi": 69.2250816770136
     },
@@ -284,69 +284,69 @@
       "price": 5.0,
       "ev": 6.162247038428774,
       "net_ev": 2.81190976914398,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
       "roi": 123.24494076857549
     },
     "collector:TMT": {
-      "price": 39.51,
+      "price": 39.71,
       "ev": 23.847378333333335,
       "net_ev": 18.26783222795601,
-      "confidence": 85,
+      "confidence": 82,
       "risk": "Medium",
-      "roi": 60.35782924154224
+      "roi": 60.05383614538739
     },
     "play:TMT": {
-      "price": 4.31,
+      "price": 4.33,
       "ev": 4.595465,
       "net_ev": 1.6516875613096567,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
-      "roi": 106.62331786542924
+      "roi": 106.13083140877598
     },
     "collector:TRK": {
-      "price": 37.75,
+      "price": 37.7,
       "ev": 27.239736666666666,
       "net_ev": 20.47709685411407,
-      "confidence": 85,
+      "confidence": 82,
       "risk": "Medium",
-      "roi": 72.15824282560706
+      "roi": 72.25394341290891
     },
     "play:TRK": {
-      "price": 4.65,
+      "price": 5.24,
       "ev": 5.796571666666667,
       "net_ev": 3.223092080307388,
-      "confidence": 97,
+      "confidence": 94,
       "risk": "Medium",
-      "roi": 124.6574551971326
+      "roi": 110.62159669211195
     }
   },
   "ranks": {
     "play": {
       "MKM": 1,
       "DFT": 2,
-      "TRK": 3,
-      "TLA": 4,
-      "MH3": 5,
-      "OTJ": 6,
+      "TLA": 3,
+      "MH3": 4,
+      "OTJ": 5,
+      "TRK": 6,
       "FDN": 7,
       "TMT": 8,
-      "ECL": 9,
-      "DSK": 10,
+      "DSK": 9,
+      "ECL": 10,
       "SPM": 11,
-      "MSH": 12,
-      "SOS": 13,
+      "SOS": 12,
+      "MSH": 13,
       "EOE": 14,
       "HOB": 15,
-      "FIN": 16,
-      "BLB": 17,
+      "BLB": 16,
+      "FIN": 17,
       "TDM": 18,
       "INR": 19
     },
     "collector": {
       "TLA": 6,
-      "MSH": 2,
-      "HOB": 3,
+      "HOB": 2,
+      "MSH": 3,
       "TRK": 4,
       "TDM": 5,
       "MKM": 7,
@@ -10978,6 +10978,328 @@
         "confidence": 97,
         "risk": "Medium",
         "roi": 124.6574551971326
+      }
+    },
+    "2026-11-27": {
+      "collector:BLB": {
+        "price": 129.13,
+        "ev": 43.66207,
+        "net_ev": 34.120072110797224,
+        "confidence": 82,
+        "risk": "Medium",
+        "roi": 33.812491287849454
+      },
+      "play:BLB": {
+        "price": 8.74,
+        "ev": 8.013559077601414,
+        "net_ev": 3.8775884049999996,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 91.68831896569122
+      },
+      "collector:DFT": {
+        "price": 27.49,
+        "ev": 14.967676666666666,
+        "net_ev": 9.991959343144208,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 54.44771432035892
+      },
+      "play:DFT": {
+        "price": 4.17,
+        "ev": 5.393541310890651,
+        "net_ev": 1.9879600353425924,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 129.3415182467782
+      },
+      "collector:DSK": {
+        "price": 78.75,
+        "ev": 30.137658333333334,
+        "net_ev": 23.491782167480796,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 38.27004232804233
+      },
+      "play:DSK": {
+        "price": 6.89,
+        "ev": 7.222113333333334,
+        "net_ev": 3.7740998665090237,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 104.82022254475085
+      },
+      "collector:ECL": {
+        "price": 39.94,
+        "ev": 18.490653333333334,
+        "net_ev": 12.790564499663951,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 46.2960774495076
+      },
+      "play:ECL": {
+        "price": 4.98,
+        "ev": 5.150053621896154,
+        "net_ev": 2.2556877523016765,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 103.41473136337657
+      },
+      "collector:EOE": {
+        "price": 78.42,
+        "ev": 43.25125347118273,
+        "net_ev": 34.786280698603235,
+        "confidence": 82,
+        "risk": "Medium",
+        "roi": 55.15334541084255
+      },
+      "play:EOE": {
+        "price": 8.44,
+        "ev": 8.213682786321113,
+        "net_ev": 4.749549454152574,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 97.31851642560562
+      },
+      "collector:FDN": {
+        "price": 91.34,
+        "ev": 44.944716666666665,
+        "net_ev": 34.525802206227006,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 49.205952120283186
+      },
+      "play:FDN": {
+        "price": 6.64,
+        "ev": 7.271613827783891,
+        "net_ev": 3.527863225007574,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 109.51225644252848
+      },
+      "collector:FIN": {
+        "price": 162.34,
+        "ev": 79.97580166666667,
+        "net_ev": 67.8392388858265,
+        "confidence": 82,
+        "risk": "Medium",
+        "roi": 49.26438441953103
+      },
+      "play:FIN": {
+        "price": 9.68,
+        "ev": 8.86258,
+        "net_ev": 5.190842020380524,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 91.55557851239669
+      },
+      "collector:HOB": {
+        "price": 53.7,
+        "ev": 41.557541666666665,
+        "net_ev": 32.29983436580984,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 77.38834574798261
+      },
+      "play:HOB": {
+        "price": 4.65,
+        "ev": 4.332233333333334,
+        "net_ev": 1.6467812500066932,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 93.1663082437276
+      },
+      "collector:INR": {
+        "price": 53.81,
+        "ev": 27.694086666666667,
+        "net_ev": 20.88636048977347,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 51.46643127051973
+      },
+      "play:INR": {
+        "price": 11.01,
+        "ev": 8.479535,
+        "net_ev": 4.352495991549419,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 77.01666666666667
+      },
+      "collector:MH3": {
+        "price": 89.48,
+        "ev": 55.688465,
+        "net_ev": 43.9186503722522,
+        "confidence": 81,
+        "risk": "Low",
+        "roi": 62.23565601251676
+      },
+      "play:MH3": {
+        "price": 11.01,
+        "ev": 12.750424469641015,
+        "net_ev": 8.430752136576249,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 115.80767002398741
+      },
+      "collector:MKM": {
+        "price": 38.42,
+        "ev": 25.092890228278947,
+        "net_ev": 18.993605932636296,
+        "confidence": 93,
+        "risk": "Medium",
+        "roi": 65.31205160926326
+      },
+      "play:MKM": {
+        "price": 5.08,
+        "ev": 6.695788333333334,
+        "net_ev": 3.6730979262578063,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 131.8068569553806
+      },
+      "collector:MSH": {
+        "price": 41.48,
+        "ev": 31.88389317727833,
+        "net_ev": 24.569947969959216,
+        "confidence": 82,
+        "risk": "Medium",
+        "roi": 76.86570197029492
+      },
+      "play:MSH": {
+        "price": 4.72,
+        "ev": 4.610235,
+        "net_ev": 1.8683815363004375,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 97.67447033898307
+      },
+      "collector:OTJ": {
+        "price": 47.12,
+        "ev": 27.195286597275445,
+        "net_ev": 20.66788062417191,
+        "confidence": 82,
+        "risk": "Medium",
+        "roi": 57.714954578258585
+      },
+      "play:OTJ": {
+        "price": 6.79,
+        "ev": 7.863258085530444,
+        "net_ev": 4.454186889214592,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 115.80645192239241
+      },
+      "collector:PIP": {
+        "price": 183.53,
+        "ev": 84.69692263169219,
+        "net_ev": 71.95828068289894,
+        "confidence": 94,
+        "risk": "Low",
+        "roi": 46.14881634157478
+      },
+      "collector:RVR": {
+        "price": 108.12,
+        "ev": 49.61671833333333,
+        "net_ev": 39.71889327357406,
+        "confidence": 94,
+        "risk": "Low",
+        "roi": 45.89041651251695
+      },
+      "collector:SOS": {
+        "price": 47.45,
+        "ev": 30.4223148730082,
+        "net_ev": 22.727474727500734,
+        "confidence": 82,
+        "risk": "Medium",
+        "roi": 64.11446759327333
+      },
+      "play:SOS": {
+        "price": 5.5,
+        "ev": 5.383090175812054,
+        "net_ev": 2.1418416122900426,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 97.87436683294644
+      },
+      "collector:SPM": {
+        "price": 48.99,
+        "ev": 23.934325,
+        "net_ev": 18.296958719051094,
+        "confidence": 82,
+        "risk": "Medium",
+        "roi": 48.85553174117167
+      },
+      "play:SPM": {
+        "price": 5.06,
+        "ev": 5.168386146228986,
+        "net_ev": 2.0376634703717422,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 102.1420187001776
+      },
+      "collector:TDM": {
+        "price": 50.21,
+        "ev": 35.29452666666667,
+        "net_ev": 26.607658610596292,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 70.29381929230566
+      },
+      "play:TDM": {
+        "price": 7.47,
+        "ev": 6.4225492457817115,
+        "net_ev": 3.1377158424267244,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 85.97790154995599
+      },
+      "collector:TLA": {
+        "price": 53.44,
+        "ev": 36.993883648196075,
+        "net_ev": 28.875819916416056,
+        "confidence": 82,
+        "risk": "Medium",
+        "roi": 69.2250816770136
+      },
+      "play:TLA": {
+        "price": 5.0,
+        "ev": 6.162247038428774,
+        "net_ev": 2.81190976914398,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 123.24494076857549
+      },
+      "collector:TMT": {
+        "price": 39.71,
+        "ev": 23.847378333333335,
+        "net_ev": 18.26783222795601,
+        "confidence": 82,
+        "risk": "Medium",
+        "roi": 60.05383614538739
+      },
+      "play:TMT": {
+        "price": 4.33,
+        "ev": 4.595465,
+        "net_ev": 1.6516875613096567,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 106.13083140877598
+      },
+      "collector:TRK": {
+        "price": 37.7,
+        "ev": 27.239736666666666,
+        "net_ev": 20.47709685411407,
+        "confidence": 82,
+        "risk": "Medium",
+        "roi": 72.25394341290891
+      },
+      "play:TRK": {
+        "price": 5.24,
+        "ev": 5.796571666666667,
+        "net_ev": 3.223092080307388,
+        "confidence": 94,
+        "risk": "Medium",
+        "roi": 110.62159669211195
       }
     }
   }
